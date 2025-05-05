@@ -1,14 +1,18 @@
-PF_RING_DIR ?= $(CURDIR)/external/pf_ring
+PF_RING_DIR ?= $(CURDIR)/external/PF_RING
+
 USERLAND_DIR := $(PF_RING_DIR)/userland
 PF_RING_BUILD_DIR := $(USERLAND_DIR)/lib
 LIBPCAP_BUILD_DIR := $(PF_RING_DIR)/userland/libpcap
+
 INSTALL_DIR ?= $(CURDIR)/third-party
 PF_RING_INSTALL_DIR := $(INSTALL_DIR)/pf_ring
 LIBPCAP_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_libpcap
 PF_RING_KERNEL_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_kernel
 
+DRIVER := $(shell ethtool -i eth1 | grep driver | awk '{print $$2}')
+DRIVERS_DIR := $(PF_RING_DIR)/drivers/intel
 
-.PHONY: clean kernel libpcap libpfring remove_external
+.PHONY: clean_kernel clean_libpcap clean_libpfring kernel libpcap libpfring remove_external
 
 libpfring:
 	@echo \"Building Libpfring...\"
@@ -21,6 +25,7 @@ libpfring:
 		if [ -f $$file ]; then \
 			cp $$file $(PF_RING_INSTALL_DIR)/include/; \
 		fi \
+	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	done
 
 libpcap:
@@ -47,8 +52,24 @@ kernel:
 remove_external:
 	rm -rf $(CURDIR)/external
 
-clean:
+clean_libpfring:
 	@echo \"Cleaning PF_RING build...\"
-	rm -rf \$(USERLAND_DIR)/lib/*.o \$(USERLAND_DIR)/lib/libpfring.so*
-	rm -rf \$(INSTALL_DIR)
+	rm -rf \$(PF_RING_INSTALL_DIR)
 
+clean_libpcap:
+	@echo \"Cleaning libpcap build...\"
+	rm -rf \$(LIBPCAP_INSTALL_DIR)
+
+clean_kernel:
+	@echo \"Cleaning kernel build...\"
+	rm -rf \$(PF_RING_KERNEL_INSTALL_DIR)
+
+build_driver:
+	if [ -d "$(DRIVERS_DIR)/$(DRIVER)" ]; then \
+		echo "[*] Building driver: $(DRIVER)"; \
+		cd $(DRIVERS_DIR) && ./configure
+		cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc && make
+		
+	else \
+		echo "Driver not found"; \
+	fi \
