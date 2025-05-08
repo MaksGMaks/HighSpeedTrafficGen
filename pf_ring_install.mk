@@ -1,4 +1,4 @@
-PF_RING_DIR ?= $(CURDIR)/external/PF_RING
+PF_RING_DIR ?= $(CURDIR)/external/pf_ring
 
 USERLAND_DIR := $(PF_RING_DIR)/userland
 PF_RING_BUILD_DIR := $(USERLAND_DIR)/lib
@@ -9,11 +9,10 @@ PF_RING_INSTALL_DIR := $(INSTALL_DIR)/pf_ring
 LIBPCAP_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_libpcap
 PF_RING_KERNEL_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_kernel
 
-DRIVER := $(shell ethtool -i eth1 | grep driver | awk '{print $$2}')
-DRIVERS_DIR := $(PF_RING_DIR)/drivers/intel
+# DRIVERS_DIR := $(PF_RING_DIR)/drivers/intel
 
-.PHONY: clean_kernel clean_libpcap clean_libpfring kernel libpcap libpfring remove_external
-
+.PHONY:  clean_kernel clean_libpcap clean_libpfring kernel libpcap libpfring remove_external
+# .PHONY: build_driver get_driver
 libpfring:
 	@echo \"Building Libpfring...\"
 	cd \$(PF_RING_BUILD_DIR) && ./configure && make
@@ -25,8 +24,8 @@ libpfring:
 		if [ -f $$file ]; then \
 			cp $$file $(PF_RING_INSTALL_DIR)/include/; \
 		fi \
-	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	done
+	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 
 libpcap:
 	@echo \"Building Libpfring...\"
@@ -64,12 +63,11 @@ clean_kernel:
 	@echo \"Cleaning kernel build...\"
 	rm -rf \$(PF_RING_KERNEL_INSTALL_DIR)
 
-build_driver:
-	if [ -d "$(DRIVERS_DIR)/$(DRIVER)" ]; then \
-		echo "[*] Building driver: $(DRIVER)"; \
-		cd $(DRIVERS_DIR) && ./configure
-		cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc && make
-		
-	else \
-		echo "Driver not found"; \
-	fi \
+# get_driver:
+# 	ethtool -i eth1 | grep driver | awk '{print $2}'
+
+# build_driver:
+# 	echo "[*] Building driver: $(DRIVER)"; \
+# 	cd $(DRIVERS_DIR) && ./configure;\
+# 	cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc && make; \
+# 	#cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc/src && sudo ./load_drivers.sh

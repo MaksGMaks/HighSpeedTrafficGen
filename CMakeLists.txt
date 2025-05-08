@@ -5,6 +5,9 @@ project(TrafficGenerator)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Driver
+# option(LOAD_DRIVER "Build and load driver if network device support" OFF)
+
 # Qt auto settings
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -51,39 +54,36 @@ function(install_package_if_missing debian_name fedora_name arch_name)
     endif()
 endfunction()
 
+# Find PkgConfig for dependencies
+find_package(PkgConfig QUIET)
+if (PKG_CONFIG_FOUND)
+    message(STATUS "PkgConfig found: ${PKG_CONFIG_EXECUTABLE}")
+else()
+    message(Status "PkgConfig NOT found. Installing:")
+    install_package_if_missing("pkg-config" "pkgconf-pkg-config" "pkgconf")
+endif()
+
 # Attempt to find Qt first
 find_package(Qt6 COMPONENTS Core Widgets Gui QUIET)
 
 # If Qt not found, fetch and build it to third-party
 if (NOT Qt6_FOUND)
-    message(STATUS "Qt not found. Initializing download...")
-
-    include(ExternalProject)
-    set(QT_VERSION "6.6.3")
-    set(QT_INSTALL_DIR ${CMAKE_SOURCE_DIR}/third-party/qt)
-
-    ExternalProject_Add(
-        QtProject
-        PREFIX ${CMAKE_BINARY_DIR}/qt_ep
-        GIT_REPOSITORY https://code.qt.io/qt/qt5.git
-        GIT_TAG v${QT_VERSION}
-        CONFIGURE_COMMAND ./configure -prefix ${QT_INSTALL_DIR} -opensource -confirm-license -nomake tests -nomake examples
-        BUILD_COMMAND make -j4
-        INSTALL_COMMAND make install
-        BUILD_IN_SOURCE 1
-    )
-
-    # Add Qt install path to CMake search path
-    list(APPEND CMAKE_PREFIX_PATH ${QT_INSTALL_DIR})
-
-    # Retry Qt find
-    find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
+    message(STATUS "Installing qt dependencies")
+    install_package_if_missing("libgl1-mesa-dev" "mesa-libGL-devel" "mesa")
+    install_package_if_missing("libx11-xcb-dev" "libX11-xcb-devel" "libx11")
+    install_package_if_missing("libxcb1-dev" "libxcb-devel" "libxcb")
+    install_package_if_missing("libglu1-mesa-dev" "mesa-libGLU-devel" "glu")
+    install_package_if_missing("libx11-dev" "libX11-devel" "libx11")
+    if(NOT Qt6_FOUND)
+        message(FATAL_ERROR "Qt6 not found. Please install it from official site: \nhttps://www.qt.io/download-qt-installer-oss \nand set CMAKE_PREFIX_PATH.\nIf Qt installed but you get this error, run CMake with \n-DCMAKE_PREFIX_PATH=/path/to/Qt6/lib/cmake")
+    else()
+        message(STATUS "Qt found")
+    endif()
 endif()
 
 message(STATUS "Using Qt version: ${Qt6_VERSION}")
 
 # DPDK
-find_package(PkgConfig REQUIRED)
 pkg_check_modules(DPDK QUIET libdpdk)
 if (NOT DPDK_FOUND)
     message(STATUS "DPDK not found. Installing...")
@@ -95,6 +95,13 @@ include_directories(${DPDK_INCLUDE_DIRS})
 # PF_RING
 
 # PF_RING Setup
+message(STATUS "Checking for PF_RING dependencies...")
+install_package_if_missing("libnl-genl-3-dev" "libnl3-devel" "libnl")
+install_package_if_missing("bison" "bison" "bison")
+install_package_if_missing("flex" "flex" "flex")
+install_package_if_missing("gcc-12" "gcc-12" "gcc") 
+install_package_if_missing("g++-12" "g++-12" "g++")
+
 set(PF_RING_DIR "${CMAKE_SOURCE_DIR}/external/pf_ring")
 set(PF_RING_LIB_DIR "${CMAKE_SOURCE_DIR}/third-party/pf_ring")
 set(PF_RING_LIBPCAP_DIR "${CMAKE_SOURCE_DIR}/third-party/pf_ring_libpcap")
@@ -199,3 +206,35 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # Output directory
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# if(LOAD_DRIVER)
+#     message(STATUS "Checking if network device support driver...")
+#     DRIVER_CMAKE=$(make -f ${PF_RING_MAKEFILE} get_driver)
+#     set(MY_LIST "e1000e" "i40e" "iavf" "ice" "igb" "irdma-*" "ixgbe" "ixgbevf" "pfring-drivers-zc-dkms" zc-dkms-mkdeb")
+# 
+#     list(FIND MY_LIST "${DRIVER_CMAKE}" _index)
+# 
+#     if(NOT _index EQUAL -1)        
+#         message(STATUS "Driver found. Initiate building...")
+#         if(NOT EXISTS "${PF_RING_DIR}")
+#             message(STATUS "PF_RING not found. Cloning from GitHub...")
+#             execute_process(
+#                 COMMAND git clone https://github.com/ntop/PF_RING.git ${PF_RING_DIR}
+#                 RESULT_VARIABLE GIT_CLONE_RESULT
+#             )
+#             if(NOT GIT_CLONE_RESULT EQUAL 0)
+#                 message(FATAL_ERROR "Failed to clone PF_RING repository")
+#             endif()
+#         endif()
+#         execute_process(
+#             COMMAND make -f ${PF_RING_MAKEFILE} build_driver DRIVER=${DRIVER_CMAKE}
+#             RESULT_VARIABLE DRIVER_BUILD_MAKE
+#             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#         )
+#         if(NOT DRIVER_BUILD_MAKE 0)
+#             message(FATAL_ERROR "Failed to build LIBPFRING")
+#         endif()
+#     else()
+#         message(STATUS "Driver is NOT found.")
+#     endif()
+# endif()
