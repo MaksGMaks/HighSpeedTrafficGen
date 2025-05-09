@@ -1,15 +1,8 @@
 #include <iostream>
 
-// DPDK
-extern "C" {
-#include <rte_eal.h>
-#include <rte_ethdev.h>
-}
-
-// PF_RING
-#include "pfring.h"
+#include "Generator/Generator.hpp"
 
 int main() {
-    std::cout << "Hello World!" << std::endl;
+    std::vector<interfaceModes> ifModes = findAllDevices();
     return 0;
 }

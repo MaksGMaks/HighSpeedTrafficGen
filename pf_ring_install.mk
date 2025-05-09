@@ -26,6 +26,7 @@ libpfring:
 		fi \
 	done
 	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
+	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring_zc.h
 
 libpcap:
 	@echo \"Building Libpfring...\"

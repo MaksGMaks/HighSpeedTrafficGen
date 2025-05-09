@@ -175,6 +175,7 @@ endif()
 # Project sources
 set(ALL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/Generator.cpp
 )
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
@@ -188,9 +189,9 @@ if (EXISTS "${PF_RING_LIBPCAP_DIR}/lib")
     target_include_directories(${PROJECT_NAME} PRIVATE ${PF_RING_LIBPCAP_DIR}/include)
     link_directories(${PF_RING_LIBPCAP_DIR}/lib)
 endif()
-if (EXISTS "${PF_RING_KERNEL_DIR}/lib")
+if (EXISTS "${PF_RING_KERNEL_DIR}/module")
     target_include_directories(${PROJECT_NAME} PRIVATE ${PF_RING_KERNEL_DIR}/include)
-    link_directories(${PF_RING_KERNEL_DIR}/lib)
+    link_directories(${PF_RING_KERNEL_DIR}/module)
 endif()
 
 # Include source directory
@@ -202,6 +203,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Gui
     Qt6::Widgets
     ${DPDK_LIBRARIES}
+    ${PF_RING_LIB_DIR}/lib/libpfring.so.9.1.0
+    ${PF_RING_LIBPCAP_DIR}/lib/libpcap.so.1.10.1
 )
 
 # Output directory
