@@ -208,7 +208,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # Output directory
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set_target_properties(${PROJECT_NAME} PROPERTIES 
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
 
 # if(LOAD_DRIVER)
 #     message(STATUS "Checking if network device support driver...")
