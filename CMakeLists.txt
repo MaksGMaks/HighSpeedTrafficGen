@@ -84,10 +84,27 @@ endif()
 message(STATUS "Using Qt version: ${Qt6_VERSION}")
 
 # DPDK
+set(DPDK_MAKEFILE "${CMAKE_SOURCE_DIR}/dpdk_install.mk")
 pkg_check_modules(DPDK QUIET libdpdk)
 if (NOT DPDK_FOUND)
     message(STATUS "DPDK not found. Installing...")
-    install_package_if_missing("libdpdk-dev" "dpdk-devel" "dpdk")
+    message(STATUS "Installing DPDK dependencies...")
+
+    install_package_if_missing("build-essential" "@development-tools" "base-devel")
+    install_package_if_missing("meson" "meson" "meson")
+    install_package_if_missing("python3-pyelftools" "python3-pyelftools" "python-pyelftools")
+    install_package_if_missing("libnuma-dev" "numactl-devel" "numactl")
+    install_package_if_missing("pkgconf" "pkgconf" "pkgconf")
+    install_package_if_missing("ninja-build" "ninja-build" "ninja")
+
+    execute_process(
+        COMMAND make -f ${DPDK_MAKEFILE} get_dpdk
+        RESULT_VARIABLE DPDK_LIB_MAKE_RESULT
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    if(NOT DPDK_LIB_MAKE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to build DPDK")
+    endif()
     pkg_check_modules(DPDK REQUIRED libdpdk)
 endif()
 include_directories(${DPDK_INCLUDE_DIRS})
