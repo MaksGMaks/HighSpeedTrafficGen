@@ -36,9 +36,13 @@ bool check_pfring_zc(const std::string& ifname) {
 }
 
 void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
-    const char* argv[] = {"detect"};
-    int argc = 1;
+    const char* argv[] = {"detect", "-c", "2", "--huge-dir=/mnt/huge"};
+    int argc = 4;
 
+    if(!isHugepageMounted("/mnt/huge")) {
+        std::cerr << "Hugepage not mounted. Run \nmount -t hugetlbfs nodev /mnt/huge \nmanualy with root previlage (mount hugepages)."
+                     "Make sure it reserves 2MB for dpdk. If not - run \necho 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages" << std::endl;
+    }
     if (rte_eal_init(argc, const_cast<char**>(argv)) < 0) {
         std::cerr << "Failed to initialize DPDK EAL\n";
         return;
@@ -71,10 +75,25 @@ std::vector<interfaceModes> findAllDevices() {
         exit(-1);
     }
     
+    std::set<std::string> seen;
     std::vector<interfaceModes> ifModes;
+
     for (ifa = interfaces; ifa != nullptr; ifa = ifa->ifa_next) {
-        std::cout << "Interface: " << ifa->ifa_name << std::endl;
-        ifModes.push_back(interfaceModes(ifa->ifa_name));
+        if (ifa->ifa_name && seen.insert(ifa->ifa_name).second) {
+            ifModes.push_back(interfaceModes(ifa->ifa_name));
+        }
     }
+    freeifaddrs(interfaces);
     return ifModes;
+}
+
+bool isHugepageMounted(const std::string& mountPoint) {
+    std::ifstream mounts("/proc/mounts");
+    std::string line;
+    while (std::getline(mounts, line)) {
+        if (line.find(mountPoint) != std::string::npos && line.find("hugetlbfs") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }

@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -37,3 +39,5 @@ bool check_pfring_standard(const std::string& ifname);
 bool check_pfring_zc(const std::string& ifname);
 void initialize_dpdk(std::vector<interfaceModes>& interfaces);
 std::vector<interfaceModes> findAllDevices();
+
+bool isHugepageMounted(const std::string& mountPoint);
