@@ -106,6 +106,15 @@ if (NOT DPDK_FOUND)
         message(FATAL_ERROR "Failed to build DPDK")
     endif()
     pkg_check_modules(DPDK REQUIRED libdpdk)
+    message(STATUS "Removing external source...")
+    execute_process(
+        COMMAND make -f ${DPDK_MAKEFILE} remove_external
+        RESULT_VARIABLE REMOVE_DPDK_MAKE_RESULT
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    if(NOT REMOVE_DPDK_MAKE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to clean external directory")
+    endif()
 endif()
 include_directories(${DPDK_INCLUDE_DIRS})
 
