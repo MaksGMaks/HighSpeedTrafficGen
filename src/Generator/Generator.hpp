@@ -26,14 +26,18 @@ public slots:
     void doStart(const genParams& params);              // start thread. should be called first
     void doStop();                                      // stop thread by joining it
 
+signals:
+    void finished();
 private:
-    void pfringSend(const genParams& params);
-    void pfringZCSend(const genParams& params);
-    void dpdkSend(const genParams& params); 
+    void pfringSend();
+    void pfringZCSend();
+    void dpdkSend(); 
 
-    void pfringSendFile(const genParams& params);
-    void pfringZCSendFile(const genParams& params);
-    void dpdkSendFile(const genParams& params); 
+    void pfringSendFile();
+    void pfringZCSendFile();
+    void dpdkSendFile(); 
+
+    genParams m_params;
     // Thread variables
     // Thread
     std::thread m_workerThread;

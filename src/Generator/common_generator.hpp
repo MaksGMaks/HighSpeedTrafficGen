@@ -36,7 +36,7 @@ struct genParams {
     bool fileSend{};                // Is file sending
     std::string filePath{};         // Path for file if sending
     uint copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
-    uint totalSend{};               // Total size of generated information; if 0 - infinite sending
+    uint64_t totalSend{};               // Total size of generated information; if 0 - infinite sending
 };
 
 std::vector<interfaceModes> findAllDevices();
