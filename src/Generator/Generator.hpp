@@ -1,52 +1,52 @@
 #pragma once
-#include <algorithm>
-#include <cstring>
-#include <fstream>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <iostream>
-#include <set>
-#include <string>
+#include <mutex>
+#include <thread>
 #include <vector>
 
-#include <iomanip>
-#include <ctime>
+#include <QObject>
 
-// Linux network
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <netinet/in.h>
+#include "common_generator.hpp"
+#include "DPDK_Engine.hpp"
+#include "PFRING_Engine.hpp"
 
-// DPDK
-#include <rte_dev.h>
-#include <rte_eal.h>
-#include <rte_ethdev.h>
+class Generator : public QObject {
+    Q_OBJECT
+public:
+    Generator(QObject *parent = nullptr);
+    ~Generator();
 
-// PF_RING
-#include <pfring.h>
-#include <pfring_zc.h>
+public slots:
+    // Control method
+    void doPause();                                     // pause thread's work but don't stop it
+    void doResume();                                    // resume thread's work after pause
+    void doStart(const genParams& params);              // start thread. should be called first
+    void doStop();                                      // stop thread by joining it
 
-struct interfaceModes {
-    std::string interfaceName{};
-    bool dpdk_support{};
-    bool pf_ring_zc_support{};
-    bool pf_ring_standart_support{};
+private:
+    void pfringSend(const genParams& params);
+    void pfringZCSend(const genParams& params);
+    void dpdkSend(const genParams& params); 
 
-    interfaceModes(const std::string interfaceName_) {
-        interfaceName = interfaceName_;
-    }
+    void pfringSendFile(const genParams& params);
+    void pfringZCSendFile(const genParams& params);
+    void dpdkSendFile(const genParams& params); 
+    // Thread variables
+    // Thread
+    std::thread m_workerThread;
 
-    uint8_t packValue() {
-        return (dpdk_support << 2) | (pf_ring_zc_support << 1) | pf_ring_standart_support;
-    }
+    // Mutex
+    std::mutex m_mutex;
+
+    // Condition variable
+    std::condition_variable m_pause;
+
+    // Atomic
+    std::atomic<bool> isRunning;
+    std::atomic<bool> isPaused;
 };
 
-bool check_pfring_standard(const std::string& ifname);
-bool check_pfring_zc(const std::string& ifname);
-void initialize_dpdk(std::vector<interfaceModes>& interfaces);
-std::vector<interfaceModes> findAllDevices();
 
-bool isHugepageMounted(const std::string& mountPoint);
-
-/// Testing
-
-void print_mac(const char mac[6]);
-void list_detailed_pfring_interfaces();

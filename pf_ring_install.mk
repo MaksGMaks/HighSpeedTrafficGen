@@ -27,6 +27,7 @@ libpfring:
 	done
 	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring_zc.h
+	sed -i 's|char *slots;|char *dev_slots;|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	@echo \"Loading created library into \/usr\/lib\"
 	sudo cp \$(PF_RING_BUILD_DIR)/libpfring.so* /usr/lib/
 	sudo ldconfig
