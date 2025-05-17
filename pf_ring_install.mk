@@ -9,7 +9,8 @@ PF_RING_INSTALL_DIR := $(INSTALL_DIR)/pf_ring
 LIBPCAP_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_libpcap
 PF_RING_KERNEL_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_kernel
 
-# DRIVERS_DIR := $(PF_RING_DIR)/drivers/intel
+DRIVERS_DIR := $(PF_RING_DIR)/drivers/intel
+AVAILABLE_DRIVERS := e1000e i40e iavf ice igb irdma-* ixgbe ixgbevf pfring-drivers-zc-dkms zc-dkms-mkdeb
 
 .PHONY:  clean_kernel clean_libpcap clean_libpfring kernel libpcap libpfring remove_external
 # .PHONY: build_driver get_driver
@@ -27,7 +28,7 @@ libpfring:
 	done
 	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	sed -i 's|#include <linux/pf_ring.h>|#include "../../pf_ring_kernel/include/pf_ring.h"|' $(PF_RING_INSTALL_DIR)/include/pfring_zc.h
-	sed -i 's|char *slots;|char *dev_slots;|' $(PF_RING_INSTALL_DIR)/include/pfring.h
+	sed -i 's|char[[:space:]]*\*slots;|char *dev_slots;|' $(PF_RING_INSTALL_DIR)/include/pfring.h
 	@echo \"Loading created library into \/usr\/lib\"
 	sudo cp \$(PF_RING_BUILD_DIR)/libpfring.so* /usr/lib/
 	sudo ldconfig
@@ -71,11 +72,17 @@ clean_kernel:
 	@echo \"Cleaning kernel build...\"
 	rm -rf \$(PF_RING_KERNEL_INSTALL_DIR)
 
-# get_driver:
-# 	ethtool -i eth1 | grep driver | awk '{print $2}'
-
-# build_driver:
-# 	echo "[*] Building driver: $(DRIVER)"; \
-# 	cd $(DRIVERS_DIR) && ./configure;\
-# 	cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc && make; \
-# 	#cd $(DRIVERS_DIR)/$(DRIVER)/$(DRIVER)-*-zc/src && sudo ./load_drivers.sh
+build_driver:
+	@echo "[*] Building driver: $(DRIVER)"
+	cd $(DRIVERS_DIR) && ./configure
+	@interfaces=$$(ls /sys/class/net | grep -v '^lo$$'); \
+	for iface in $$interfaces; do \
+		driver=$$(ethtool -i $$iface | grep driver | awk '{print $$2}'); \
+		if echo "$(AVAILABLE_DRIVERS)" | grep -qw "$$driver"; then \
+			echo "[DRIVER] $$iface has PF_RING ZC driver ($$driver). Initiate building..."; \
+			cd $(DRIVERS_DIR)/$$driver/$$driver-*-zc && make; \
+			cd $(DRIVERS_DIR)/$$driver/$$driver-*-zc/src && sudo ./load_driver.sh; \
+		else \
+			echo "[DRIVER] $$iface has not PF_RING ZC driver. Skipping..."; \
+		fi; \
+	done

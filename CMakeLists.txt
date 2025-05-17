@@ -242,34 +242,35 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
-# if(LOAD_DRIVER)
-#     message(STATUS "Checking if network device support driver...")
-#     DRIVER_CMAKE=$(make -f ${PF_RING_MAKEFILE} get_driver)
-#     set(MY_LIST "e1000e" "i40e" "iavf" "ice" "igb" "irdma-*" "ixgbe" "ixgbevf" "pfring-drivers-zc-dkms" zc-dkms-mkdeb")
-# 
-#     list(FIND MY_LIST "${DRIVER_CMAKE}" _index)
-# 
-#     if(NOT _index EQUAL -1)        
-#         message(STATUS "Driver found. Initiate building...")
-#         if(NOT EXISTS "${PF_RING_DIR}")
-#             message(STATUS "PF_RING not found. Cloning from GitHub...")
-#             execute_process(
-#                 COMMAND git clone https://github.com/ntop/PF_RING.git ${PF_RING_DIR}
-#                 RESULT_VARIABLE GIT_CLONE_RESULT
-#             )
-#             if(NOT GIT_CLONE_RESULT EQUAL 0)
-#                 message(FATAL_ERROR "Failed to clone PF_RING repository")
-#             endif()
-#         endif()
-#         execute_process(
-#             COMMAND make -f ${PF_RING_MAKEFILE} build_driver DRIVER=${DRIVER_CMAKE}
-#             RESULT_VARIABLE DRIVER_BUILD_MAKE
-#             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-#         )
-#         if(NOT DRIVER_BUILD_MAKE 0)
-#             message(FATAL_ERROR "Failed to build LIBPFRING")
-#         endif()
-#     else()
-#         message(STATUS "Driver is NOT found.")
-#     endif()
-# endif()
+if(LOAD_DRIVER)
+    message(STATUS "Installing dependencies...")
+    install_package_if_missing("ethtool" "ethtool" "ethtool")
+    install_package_if_missing("net-tools" "net-tools" "net-tools")
+    if(NOT EXISTS "${PF_RING_DIR}")
+        message(STATUS "PF_RING not found. Cloning from GitHub...")
+        execute_process(
+            COMMAND git clone https://github.com/ntop/PF_RING.git ${PF_RING_DIR}
+            RESULT_VARIABLE GIT_CLONE_RESULT
+        )
+        if(NOT GIT_CLONE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to clone PF_RING repository")
+        endif()
+    endif()
+    execute_process(
+        COMMAND make -f ${PF_RING_MAKEFILE} build_driver
+        RESULT_VARIABLE DRIVER_BUILD_MAKE
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    if(NOT DRIVER_BUILD_MAKE EQUAL 0)
+        message(FATAL_ERROR "Failed to build LIBPFRING")
+    endif()
+    message(STATUS "Removing external source...")
+    execute_process(
+        COMMAND make -f ${PF_RING_MAKEFILE} remove_external
+        RESULT_VARIABLE REMOVE_PF_RING_MAKE_RESULT
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    if(NOT REMOVE_PF_RING_MAKE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to clean external directory")
+    endif()
+endif()
