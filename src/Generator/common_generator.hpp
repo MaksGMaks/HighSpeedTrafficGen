@@ -33,15 +33,16 @@ struct interfaceModes {
 };
 
 struct genParams {
-    std::string interfaceName{};    // Name of interface for generation
-    uint8_t mode{};                 // Method, which interface use for generation (PF_RING, PF_RING ZC of DPDK)
-    uint time{};                    // Time for sending; if 0 - infinite sending
-    uint64_t speed{};               // Speed of sending; if 0 - unlimited speed
-    uint packSize{};                // Size of package for sending
-    bool fileSend{};                // Is file sending
-    std::string filePath{};         // Path for file if sending
+    std::string interfaceName{};        // Name of interface for generation
+    uint8_t mode{};                     // Method, which interface use for generation (PF_RING, PF_RING ZC of DPDK)
+    uint time{};                        // Time for sending; if 0 - infinite sending
+    uint64_t speed{};                   // Speed of sending; if 0 - unlimited speed
+    uint packSize{};                    // Size of package for sending
+    bool fileSend{};                    // Is file sending
+    std::string filePath{};             // Path for file if sending
     uint64_t copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
     uint64_t totalSend{};               // Total size of generated information; if 0 - infinite sending
+    uint8_t burstSize{};                // Size of burst for sending
 };
 
 std::vector<interfaceModes> findAllDevices();

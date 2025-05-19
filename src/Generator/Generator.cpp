@@ -61,6 +61,11 @@ void Generator::doResume() {
     m_pause.notify_all();
 }
 
+/**
+ * @brief pfringSend
+ * @details Send packets using PF_RING
+ * @note PF_RING is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::pfringSend() {
     // Preset pf_ring
     pfring* ring = pfring_open(m_params.interfaceName.c_str(), 1500 /* snaplen */, PF_RING_PROMISC);
@@ -81,7 +86,7 @@ void Generator::pfringSend() {
     std::vector<uint8_t> packet(m_params.packSize, 0xAA); // Fill with dummy data
     
     // Preset stop conditions
-    uint totalCopies = 0, totalSend = 0;
+    uint64_t totalCopies = 0, totalSend = 0;
     struct timespec startTime{}, currTime{};
     
     // Preset speed variables
@@ -128,6 +133,11 @@ void Generator::pfringSend() {
     emit finished();
 }
 
+/**
+ * @brief pfringSendFile
+ * @details Send file using PF_RING
+ * @note PF_RING is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::pfringSendFile() {
     // Preset pf_ring
     pfring* ring = pfring_open(m_params.interfaceName.c_str(), 1500 /* snaplen */, PF_RING_PROMISC);
@@ -163,12 +173,9 @@ void Generator::pfringSendFile() {
         fileSize += m_params.packSize - (fileSize % m_params.packSize);
     }
     packet.resize(fileSize, 0x00);
-    for(auto ch : packet) {
-        std::cout << ch;
-    }
-    std::cout << std::endl;
+    
     // Preset stop conditions
-    uint totalCopies = 0, totalSend = 0, offset = 0;
+    uint64_t totalCopies = 0, totalSend = 0, offset = 0;
     struct timespec startTime{}, currTime{};
     
     // Preset speed variables
@@ -222,8 +229,12 @@ void Generator::pfringSendFile() {
     emit finished();
 }
 
+/**
+ * @brief pfringZCSend
+ * @details Send packets using PF_RING ZC
+ * @note PF_RING ZC is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::pfringZCSend() {
-    constexpr size_t BURSTLEN = 64;
     int mtu = get_interface_mtu(m_params.interfaceName);
     if(m_params.packSize > mtu) {
         std::cerr << "Packet size is larger than MTU" << std::endl;
@@ -251,10 +262,10 @@ void Generator::pfringZCSend() {
     }
 
     // Allocate burst of packet buffers
-    std::vector<pfring_zc_pkt_buff*> burst(BURSTLEN);
+    std::vector<pfring_zc_pkt_buff*> burst(m_params.burstSize);
     std::vector<uint8_t> packet(m_params.packSize, 0xAA);  // Dummy payload
 
-    for (size_t i = 0; i < BURSTLEN; ++i) {
+    for (size_t i = 0; i < m_params.burstSize; ++i) {
         burst[i] = pfring_zc_get_packet_handle(cluster);
         if (!burst[i]) {
             std::cerr << "Failed to allocate packet handle\n";
@@ -322,8 +333,133 @@ void Generator::pfringZCSend() {
     emit finished();
 }
 
+/**
+ * @brief pfringZCSendFile
+ * @details Send file using PF_RING ZC
+ * @note PF_RING ZC is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::pfringZCSendFile() {
+    int mtu = get_interface_mtu(m_params.interfaceName);
+    if(m_params.packSize > mtu) {
+        std::cerr << "Packet size is larger than MTU" << std::endl;
+        emit finished();
+        return;
+    }
+    std::cout << "PF_ZC send" << std::endl;
+    // Create cluster
+    pfring_zc_cluster* cluster = pfring_zc_create_cluster(
+        0, mtu + 64, 0, 16384, -1, nullptr, 0);
+    if (!cluster) {
+        std::cerr << "Failed to create ZC cluster\n";
+        emit finished();
+        return;
+    }
 
+    // Open TX queue
+    pfring_zc_queue* tx_queue = pfring_zc_open_device(
+        cluster, m_params.interfaceName.c_str(), tx_only, 0);
+    if (!tx_queue) {
+        std::cerr << "Failed to open TX device\n";
+        pfring_zc_destroy_cluster(cluster);
+        emit finished();
+        return;
+    }
+
+    // Allocate burst of packet buffers
+    uint64_t offset = 0;
+    std::vector<pfring_zc_pkt_buff*> burst(m_params.burstSize);
+
+    std::ifstream file(m_params.filePath, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open file: " << m_params.filePath << std::endl;
+        return;
+    }
+    file.seekg(0, std::ios::end);
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> fileData(fileSize);
+    if (!file.read((fileData.data()), fileSize)) {
+        std::cerr << "Failed to read file." << std::endl;
+        return;
+    }
+    std::vector<uint8_t> packet(fileData.begin(), fileData.end());
+    if(fileSize % m_params.packSize != 0) {
+        fileSize += m_params.packSize - (fileSize % m_params.packSize);
+    }
+    packet.resize(fileSize, 0x00);
+    
+
+    for (size_t i = 0; i < m_params.burstSize; ++i) {
+        burst[i] = pfring_zc_get_packet_handle(cluster);
+        if (!burst[i]) {
+            std::cerr << "Failed to allocate packet handle\n";
+            emit finished();
+            return;
+        }
+        memcpy(pfring_zc_pkt_buff_data(burst[i], tx_queue), packet.data() + offset, m_params.packSize);
+        burst[i]->len = m_params.packSize;
+        if((offset + m_params.packSize) >= fileSize - 1) {
+            offset = 0;
+        } else {
+            offset += m_params.packSize;
+        }
+    }
+
+    // Preset stop conditions
+    uint64_t totalCopies = 0, totalSend = 0;
+    struct timespec startTime{}, currTime{};
+    
+    // Preset speed variables
+    uint64_t bytesPerPacket = m_params.packSize + 20;
+    uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
+    uint64_t nextTime, sleepNS;
+
+    std::cout << "PF_ZC before while" << std::endl;
+
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
+    nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
+    while (isRunning) {
+        {
+            std::unique_lock lock(m_mutex);
+            m_pause.wait(lock, [this](){ return !isPaused || !isRunning; });
+        }
+
+        if(!isRunning)
+            break;
+
+        pfringZCGenerate(tx_queue, burst);
+
+        clock_gettime(CLOCK_MONOTONIC, &currTime);
+        ++totalCopies;
+        totalSend += packet.size();
+        if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
+            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            break;
+        
+        if(m_params.speed != 0) {
+            nextTime += internalNS;
+            if(nextTime < (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec))
+                sleepNS = 0;
+            else
+                sleepNS = nextTime - (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec);
+            if(sleepNS > 0) {
+                struct timespec sleepTime = {
+                    .tv_sec = sleepNS / 1'000'000'000ULL,
+                    .tv_nsec = sleepNS % 1'000'000'000ULL
+                };
+                nanosleep(&sleepTime, nullptr);
+            } else {
+                nextTime = currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec;
+            }
+        }
+    }
+    // Clean up
+    for (auto pkt : burst)
+        pfring_zc_release_packet_handle(cluster, pkt);
+
+    pfring_zc_close_device(tx_queue);
+    pfring_zc_destroy_cluster(cluster);
+    emit finished();
 }
 
 void Generator::dpdkSend() {

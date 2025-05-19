@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
     Generator* gen = new Generator;
 
     std::filesystem::path filePath = std::filesystem::current_path() / "test.txt"; 
-    genParams params = {"ham0", 1, 0, 0, 1024, true, filePath.string(), 6, 0};
+    genParams params = {"ham0", 1, 0, 0, 1024, true, filePath.string(), 6, 0, 64};
     gen->doStart(params);
 
     return app.exec();
