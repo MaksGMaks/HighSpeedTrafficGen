@@ -20,3 +20,19 @@ std::vector<interfaceModes> findAllDevices() {
     freeifaddrs(interfaces);
     return ifModes;
 }
+
+int get_interface_mtu(const std::string& ifname) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) return -1;
+
+    struct ifreq ifr;
+    std::memset(&ifr, 0, sizeof(ifr));
+    std::strncpy(ifr.ifr_name, ifname.c_str(), IFNAMSIZ-1);
+
+    if (ioctl(sock, SIOCGIFMTU, &ifr) < 0) {
+        close(sock);
+        return -1;
+    }
+    close(sock);
+    return ifr.ifr_mtu;
+}

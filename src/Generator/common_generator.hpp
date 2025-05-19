@@ -1,16 +1,21 @@
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include <ctime>
 #include <iostream>
 #include <iomanip>
 #include <set>
 #include <string>
+#include <unistd.h>
 #include <vector>
+
+#include <sys/ioctl.h>
 
 // Linux network
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
+#include <net/if.h>
 
 struct interfaceModes {
     std::string interfaceName{};
@@ -35,8 +40,9 @@ struct genParams {
     uint packSize{};                // Size of package for sending
     bool fileSend{};                // Is file sending
     std::string filePath{};         // Path for file if sending
-    uint copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
+    uint64_t copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
     uint64_t totalSend{};               // Total size of generated information; if 0 - infinite sending
 };
 
 std::vector<interfaceModes> findAllDevices();
+int get_interface_mtu(const std::string& ifname);

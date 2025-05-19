@@ -221,53 +221,60 @@ void Generator::pfringSendFile() {
     pfring_close(ring);
     emit finished();
 }
-/**
- * Create a new cluster. 
- * @param cluster_id           The unique cluster identifier.
- * @param buffer_len           The size of each buffer: it must be at least as large as the MTU + L2 header (it will be rounded up to cache line) and not bigger than the page size.
- * @param metadata_len         The size of each buffer metadata.
- * @param tot_num_buffers      The total number of buffers to reserve for queues/devices/extra allocations.
- * @param numa_node_id         The NUMA node id for cpu/memory binding.
- * @param hugepages_mountpoint The HugeTLB mountpoint (NULL for auto-detection) for memory allocation.
- * @param flags                Optional flags:
- *                             @code
- *                             PF_RING_ZC_ENABLE_VM_SUPPORT enable KVM support (memory is rounded up to power of 2 thus it allocates more memory!)
- *                             @endcode
- * @return                     The cluster handle on success, NULL otherwise (errno is set appropriately).
- */
+
 void Generator::pfringZCSend() {
-    pfring_zc_cluster* cluster = pfring_zc_create_cluster(0, 2048, 0, 2048, 0, NULL, 0);
+    constexpr size_t BURSTLEN = 64;
+    int mtu = get_interface_mtu(m_params.interfaceName);
+    if(m_params.packSize > mtu) {
+        std::cerr << "Packet size is larger than MTU" << std::endl;
+        emit finished();
+        return;
+    }
+    std::cout << "PF_ZC send" << std::endl;
+    // Create cluster
+    pfring_zc_cluster* cluster = pfring_zc_create_cluster(
+        0, mtu + 64, 0, 16384, -1, nullptr, 0);
     if (!cluster) {
-        std::cerr << "Failed to create cluster\n";
+        std::cerr << "Failed to create ZC cluster\n";
+        emit finished();
         return;
     }
 
-    pfring_zc_queue* tx_queue = pfring_zc_open_device(cluster, m_params.interfaceName.c_str(), tx_only, 0);
+    // Open TX queue
+    pfring_zc_queue* tx_queue = pfring_zc_open_device(
+        cluster, m_params.interfaceName.c_str(), tx_only, 0);
     if (!tx_queue) {
-        std::cerr << "Failed to open device\n";
+        std::cerr << "Failed to open TX device\n";
         pfring_zc_destroy_cluster(cluster);
+        emit finished();
         return;
     }
 
-    pfring_zc_pkt_buff* pkt = pfring_zc_get_packet_handle(cluster);
-    if (!pkt) {
-        std::cerr << "Failed to get packet handle\n";
-        pfring_zc_close_device(tx_queue);
-        pfring_zc_destroy_cluster(cluster);
-        return;
+    // Allocate burst of packet buffers
+    std::vector<pfring_zc_pkt_buff*> burst(BURSTLEN);
+    std::vector<uint8_t> packet(m_params.packSize, 0xAA);  // Dummy payload
+
+    for (size_t i = 0; i < BURSTLEN; ++i) {
+        burst[i] = pfring_zc_get_packet_handle(cluster);
+        if (!burst[i]) {
+            std::cerr << "Failed to allocate packet handle\n";
+            emit finished();
+            return;
+        }
+        memcpy(pfring_zc_pkt_buff_data(burst[i], tx_queue), packet.data(), m_params.packSize);
+        burst[i]->len = m_params.packSize;
     }
 
-    // Preset packet
-    std::vector<uint8_t> packet(m_params.packSize, 0xAA); // Fill with dummy data
-    
     // Preset stop conditions
-    uint totalCopies = 0, totalSend = 0;
+    uint64_t totalCopies = 0, totalSend = 0;
     struct timespec startTime{}, currTime{};
     
     // Preset speed variables
     uint64_t bytesPerPacket = m_params.packSize + 20;
     uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
     uint64_t nextTime, sleepNS;
+
+    std::cout << "PF_ZC before while" << std::endl;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
@@ -280,7 +287,7 @@ void Generator::pfringZCSend() {
         if(!isRunning)
             break;
 
-        // process();
+        pfringZCGenerate(tx_queue, burst);
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         ++totalCopies;
@@ -306,6 +313,13 @@ void Generator::pfringZCSend() {
             }
         }
     }
+    // Clean up
+    for (auto pkt : burst)
+        pfring_zc_release_packet_handle(cluster, pkt);
+
+    pfring_zc_close_device(tx_queue);
+    pfring_zc_destroy_cluster(cluster);
+    emit finished();
 }
 
 void Generator::pfringZCSendFile() {

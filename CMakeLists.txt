@@ -262,7 +262,7 @@ if(LOAD_DRIVER)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
     if(NOT DRIVER_BUILD_MAKE EQUAL 0)
-        message(FATAL_ERROR "Failed to build LIBPFRING")
+        message(FATAL_ERROR "Failed to build PF_RING_DRIVERS")
     endif()
     message(STATUS "Removing external source...")
     execute_process(

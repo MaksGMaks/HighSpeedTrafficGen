@@ -52,3 +52,13 @@ void pfringGenerate(pfring* ring, const uint8_t* packetData, uint32_t packetLen)
         std::cerr << "PF_RING send error: " << rc << std::endl;
     }
 }
+
+void pfringZCGenerate(pfring_zc_queue* tx_queue,
+                      std::vector<pfring_zc_pkt_buff*>& burst)
+{
+    int sent = pfring_zc_send_pkt_burst(tx_queue, burst.data(), burst.size(), 0); // 0 = do NOT auto free
+    if (sent <= 0) {
+        std::cerr << "PF_RING ZC send error: " << sent
+                  << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+    }
+}
