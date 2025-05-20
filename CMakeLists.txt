@@ -205,7 +205,6 @@ set(ALL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/DPDK_Engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/Generator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/PFRING_Engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/MainWindow.cpp
 )
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
@@ -226,6 +225,9 @@ endif()
 
 # Include source directory
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Compile options
+target_compile_options(${PROJECT_NAME} PRIVATE -mssse3)
 
 # Link Qt and DPDK libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE

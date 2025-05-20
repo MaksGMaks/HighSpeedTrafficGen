@@ -104,7 +104,13 @@ void Generator::pfringSend() {
         if(!isRunning)
             break;
 
-        pfringGenerate(ring, packet.data(), packet.size());
+        // SEND
+        int rc = pfring_send(ring, (char*)packet.data(), packet.size(), 0 /* flush = false */);
+        if (rc < 0) {
+            std::cerr << "PF_RING send error: " << rc << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+        }
+        // END SEND
+
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         ++totalCopies;
         totalSend += packet.size();
@@ -194,7 +200,13 @@ void Generator::pfringSendFile() {
         if(!isRunning)
             break;
 
-        pfringGenerate(ring, packet.data() + offset, m_params.packSize);
+        // SEND
+        int rc = pfring_send(ring, (char*)(packet.data() + offset), m_params.packSize, 0 /* flush = false */);
+        if (rc < 0) {
+            std::cerr << "PF_RING send error: " << rc << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+        }
+        // END SEND
+
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         totalSend += packet.size();
         if((offset + m_params.packSize) >= fileSize - 1) {
@@ -285,8 +297,6 @@ void Generator::pfringZCSend() {
     uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
     uint64_t nextTime, sleepNS;
 
-    std::cout << "PF_ZC before while" << std::endl;
-
     clock_gettime(CLOCK_MONOTONIC, &startTime);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
@@ -298,7 +308,13 @@ void Generator::pfringZCSend() {
         if(!isRunning)
             break;
 
-        pfringZCGenerate(tx_queue, burst);
+        // SEND
+        int sent = pfring_zc_send_pkt_burst(tx_queue, burst.data(), burst.size(), 0); // 0 = do NOT auto free
+        if (sent <= 0) {
+            std::cerr << "PF_RING ZC send error: " << sent
+                    << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+        }
+        // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         ++totalCopies;
@@ -414,8 +430,6 @@ void Generator::pfringZCSendFile() {
     uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
     uint64_t nextTime, sleepNS;
 
-    std::cout << "PF_ZC before while" << std::endl;
-
     clock_gettime(CLOCK_MONOTONIC, &startTime);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
@@ -427,7 +441,13 @@ void Generator::pfringZCSendFile() {
         if(!isRunning)
             break;
 
-        pfringZCGenerate(tx_queue, burst);
+        // SEND
+        int sent = pfring_zc_send_pkt_burst(tx_queue, burst.data(), burst.size(), 0); // 0 = do NOT auto free
+        if (sent <= 0) {
+            std::cerr << "PF_RING ZC send error: " << sent
+                    << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+        }
+        // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         ++totalCopies;
@@ -462,7 +482,79 @@ void Generator::pfringZCSendFile() {
     emit finished();
 }
 
+/**
+ * @brief dpdkSend
+ * @details Send packets using DPDK
+ * @note DPDK is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::dpdkSend() {
+    uint16_t port_id;
+    if (rte_eth_dev_get_port_by_name(m_params.interfaceName.c_str(), &port_id) != 0) {
+        std::cerr << "DPDK: Failed to get port for device " << m_params.interfaceName << std::endl;
+        emit finished();
+        return;
+    }
+    const uint16_t queue_id = 0;
+    const uint16_t nb_txd = 1024;
+    const uint32_t mbuf_size = m_params.packSize + RTE_PKTMBUF_HEADROOM;
+    const uint32_t nb_mbufs = 8192;
+
+    // Create mempool
+    rte_mempool* mbuf_pool = rte_pktmbuf_pool_create(
+        "MBUF_POOL", nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+    if (!mbuf_pool) {
+        std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+        emit finished();
+        return;
+    }
+
+    // Configure port
+    rte_eth_conf port_conf = {};
+    port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
+    if (rte_eth_dev_configure(port_id, 0, 1, &port_conf) < 0) {
+        std::cerr << "DPDK: Failed to configure port" << std::endl;
+        emit finished();
+        return;
+    }
+    if (rte_eth_tx_queue_setup(port_id, queue_id, nb_txd, rte_eth_dev_socket_id(port_id), nullptr) < 0) {
+        std::cerr << "DPDK: Failed to setup TX queue" << std::endl;
+        emit finished();
+        return;
+    }
+    if (rte_eth_dev_start(port_id) < 0) {
+        std::cerr << "DPDK: Failed to start port" << std::endl;
+        emit finished();
+        return;
+    }
+
+    std::vector<uint8_t> packet(m_params.packSize, 0xAA); // Dummy payload
+    std::vector<rte_mbuf*> burst(m_params.burstSize);
+
+    for (uint16_t i = 0; i < m_params.burstSize; ++i) {
+        rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
+        if (!mbuf) {
+            std::cerr << "DPDK: Failed to allocate mbuf\n";
+            burst.resize(i); // Only send what we have
+            break;
+        }
+        uint8_t* data = rte_pktmbuf_mtod(mbuf, uint8_t*);
+        memcpy(data, packet.data(), m_params.packSize);
+        mbuf->data_len = m_params.packSize;
+        mbuf->pkt_len = m_params.packSize;
+        burst[i] = mbuf;
+    }
+    
+    // Preset stop conditions
+    uint64_t totalCopies = 0, totalSend = 0;
+    struct timespec startTime{}, currTime{};
+    
+    // Preset speed variables
+    uint64_t bytesPerPacket = m_params.packSize + 20;
+    uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
+    uint64_t nextTime, sleepNS;
+
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
+    nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
             std::unique_lock lock(m_mutex);
@@ -472,10 +564,191 @@ void Generator::dpdkSend() {
         if(!isRunning)
             break;
 
-        // process();
+        // SEND
+        uint16_t sent = rte_eth_tx_burst(port_id, queue_id, burst.data(), burst.size());
+        if (sent < burst.size()) {
+            std::cerr << "DPDK: Failed to send all packets. Sent: " << sent << std::endl;
+        }
+        // END SEND
+
+        clock_gettime(CLOCK_MONOTONIC, &currTime);
+        ++totalCopies;
+        totalSend += packet.size();
+        if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
+            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            break;
+        
+        if(m_params.speed != 0) {
+            nextTime += internalNS;
+            if(nextTime < (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec))
+                sleepNS = 0;
+            else
+                sleepNS = nextTime - (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec);
+            if(sleepNS > 0) {
+                struct timespec sleepTime = {
+                    .tv_sec = sleepNS / 1'000'000'000ULL,
+                    .tv_nsec = sleepNS % 1'000'000'000ULL
+                };
+                nanosleep(&sleepTime, nullptr);
+            } else {
+                nextTime = currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec;
+            }
+        }
     }
+    // Free mbufs
+    for (uint16_t i = 0; i < burst.size(); ++i) {
+        rte_pktmbuf_free(burst[i]);
+    }
+    
+    rte_eth_dev_stop(port_id);
+    rte_eth_dev_close(port_id);
+    emit finished();
 } 
 
+/**
+ * @brief dpdkSendFile
+ * @details Send file using DPDK
+ * @note DPDK is not supported on all interfaces. Check interface support before using.
+*/
 void Generator::dpdkSendFile() {
+    uint16_t port_id;
+    if (rte_eth_dev_get_port_by_name(m_params.interfaceName.c_str(), &port_id) != 0) {
+        std::cerr << "DPDK: Failed to get port for device " << m_params.interfaceName << std::endl;
+        emit finished();
+        return;
+    }
+    const uint16_t queue_id = 0;
+    const uint16_t nb_txd = 1024;
+    const uint32_t mbuf_size = m_params.packSize + RTE_PKTMBUF_HEADROOM;
+    const uint32_t nb_mbufs = 8192;
 
+    // Create mempool
+    rte_mempool* mbuf_pool = rte_pktmbuf_pool_create(
+        "MBUF_POOL", nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+    if (!mbuf_pool) {
+        std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+        emit finished();
+        return;
+    }
+
+    // Configure port
+    rte_eth_conf port_conf = {};
+    port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
+    if (rte_eth_dev_configure(port_id, 0, 1, &port_conf) < 0) {
+        std::cerr << "DPDK: Failed to configure port" << std::endl;
+        emit finished();
+        return;
+    }
+    if (rte_eth_tx_queue_setup(port_id, queue_id, nb_txd, rte_eth_dev_socket_id(port_id), nullptr) < 0) {
+        std::cerr << "DPDK: Failed to setup TX queue" << std::endl;
+        emit finished();
+        return;
+    }
+    if (rte_eth_dev_start(port_id) < 0) {
+        std::cerr << "DPDK: Failed to start port" << std::endl;
+        emit finished();
+        return;
+    }
+
+    // Preset packet
+    uint64_t offset = 0;
+    std::vector<rte_mbuf*> burst(m_params.burstSize);
+
+    std::ifstream file(m_params.filePath, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open file: " << m_params.filePath << std::endl;
+        return;
+    }
+    file.seekg(0, std::ios::end);
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> fileData(fileSize);
+    if (!file.read((fileData.data()), fileSize)) {
+        std::cerr << "Failed to read file." << std::endl;
+        return;
+    }
+    std::vector<uint8_t> packet(fileData.begin(), fileData.end());
+    if(fileSize % m_params.packSize != 0) {
+        fileSize += m_params.packSize - (fileSize % m_params.packSize);
+    }
+    packet.resize(fileSize, 0x00);
+
+    for (uint16_t i = 0; i < m_params.burstSize; ++i) {
+        rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
+        if (!mbuf) {
+            std::cerr << "DPDK: Failed to allocate mbuf\n";
+            burst.resize(i); // Only send what we have
+            break;
+        }
+        uint8_t* data = rte_pktmbuf_mtod(mbuf, uint8_t*);
+        memcpy(data, packet.data() + offset, m_params.packSize);
+        mbuf->data_len = m_params.packSize;
+        mbuf->pkt_len = m_params.packSize;
+        burst[i] = mbuf;
+        if((offset + m_params.packSize) >= fileSize - 1) {
+            offset = 0;
+        } else {
+            offset += m_params.packSize;
+        }
+    }
+    
+    // Preset stop conditions
+    uint64_t totalCopies = 0, totalSend = 0;
+    struct timespec startTime{}, currTime{};
+    
+    // Preset speed variables
+    uint64_t bytesPerPacket = m_params.packSize + 20;
+    uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
+    uint64_t nextTime, sleepNS;
+
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
+    nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
+    while (isRunning) {
+        {
+            std::unique_lock lock(m_mutex);
+            m_pause.wait(lock, [this](){ return !isPaused || !isRunning; });
+        }
+
+        if(!isRunning)
+            break;
+
+        // SEND
+        uint16_t sent = rte_eth_tx_burst(port_id, queue_id, burst.data(), burst.size());
+        if (sent < burst.size()) {
+            std::cerr << "DPDK: Failed to send all packets. Sent: " << sent << std::endl;
+        }
+        // END SEND
+
+        clock_gettime(CLOCK_MONOTONIC, &currTime);
+        ++totalCopies;
+        totalSend += packet.size();
+        if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
+            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            break;
+        
+        if(m_params.speed != 0) {
+            nextTime += internalNS;
+            if(nextTime < (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec))
+                sleepNS = 0;
+            else
+                sleepNS = nextTime - (currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec);
+            if(sleepNS > 0) {
+                struct timespec sleepTime = {
+                    .tv_sec = sleepNS / 1'000'000'000ULL,
+                    .tv_nsec = sleepNS % 1'000'000'000ULL
+                };
+                nanosleep(&sleepTime, nullptr);
+            } else {
+                nextTime = currTime.tv_sec * 1'000'000'000ULL + currTime.tv_nsec;
+            }
+        }
+    }
+    // Free mbufs
+    for (uint16_t i = 0; i < burst.size(); ++i) {
+        rte_pktmbuf_free(burst[i]);
+    }
+    
+    rte_eth_dev_stop(port_id);
+    rte_eth_dev_close(port_id);
+    emit finished();
 }
