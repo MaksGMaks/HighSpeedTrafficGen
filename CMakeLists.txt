@@ -64,7 +64,7 @@ else()
 endif()
 
 # Attempt to find Qt first
-find_package(Qt6 COMPONENTS Core Widgets Gui QUIET)
+find_package(Qt6 COMPONENTS Core Charts Widgets Gui QUIET)
 
 # If Qt not found, fetch and build it to third-party
 if (NOT Qt6_FOUND)
@@ -205,6 +205,7 @@ set(ALL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/DPDK_Engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/Generator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/PFRING_Engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/MainWindow.cpp
 )
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
@@ -231,6 +232,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE -mssse3)
 
 # Link Qt and DPDK libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
+    Qt6::Charts
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
