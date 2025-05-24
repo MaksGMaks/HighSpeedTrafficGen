@@ -6,6 +6,7 @@
 #include <QChart>
 #include <QChartView>
 #include <QComboBox>
+#include <QFileDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,13 +14,23 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpacerItem>
 #include <QTabWidget>
+#include <QThread>
 #include <QTimeEdit>
 #include <QVBoxLayout>
 
+#include "commonUI.hpp"
+#include "HelpPage.hpp"
+#include "../SettingsManager.hpp"
+#include "UIUpdate/UIUpdater.hpp"
+
+#include "UInt64Validator.hpp"
+
 #include "Generator/common_generator.hpp"
+#include "Generator/Generator.hpp"
 
 #define MINIMUM_PARAM_LABEL_WIDTH 180
 #define MINIMUM_PARAM_LABEL_HEIGHT 30
@@ -36,18 +47,61 @@
 #define MINIMUM_PARAM_COMBOBOX_WIDTH 100
 #define MINIMUM_PARAM_COMBOBOX_HEIGHT 30
 
+#define PF_RING_STANDARD 1
+#define PF_RING_ZC 2
+#define DPDK 4
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow(QWidget *parent = nullptr); //, std::vector<interfaceModes> interfases
     ~MainWindow();
 
+signals:
+    void startGenerator(const genParams &params);
+    void pauseGenerator();
+    void resumeGenerator();
+    void stopGenerator();
+
+public slots:
+    // Slot functions for handling button clicks and menu actions
+    void onStartButtonClicked();
+    void onPauseButtonClicked();
+    void onFileSendButtonClicked();
+    void onSelectFileButtonClicked();
+
+    void onSavePpsGraphActionTriggered();
+    void onSaveBpsGraphActionTriggered();
+    void onSaveBPSGraphActionTriggered();
+    void onSavePacketLossGraphActionTriggered();
+    //void onAboutActionTriggered();
+    void onHelpActionTriggered();
+
+    void onRefreshInterfacesActionTriggered();
+    void onInterfaceChanged(const QString &interfaceName);
+
+    void onThemeChanged(const QString &theme);
+    void onLanguageChanged(const QString &language);
+    // Slot functions for handling outer events
+    void onApplyStyleSheet(const QString &styleSheet);
+    
+
 private:
     void setupUi();
     void setupConnections();
+    void setupSettings();
+    void setupUtilitiesThread();
     
+    void saveGraph(const QChartView *chartView);
+
     // Data members
     std::vector<interfaceModes> m_interfaces;
+    std::unordered_map<std::string, interfaceModes> m_interfacesMap;
+    SettingsManager m_settingsManager;
+    HelpPage *m_helpPage;
+    QThread *m_utilitiesThread;
+    Generator *m_generator;
+    UIUpdater *m_uiUpdater;
 
     // UI elements
     // Tabs
@@ -68,15 +122,20 @@ private:
     QMenu *m_fileMenu;
     QMenu *m_savingsMenu;
     QMenu *m_settingsMenu;
+    QMenu *m_themeMenu;
+    QMenu *m_languageMenu;
 
+    QAction *m_refreshInterfacesAction;
     QAction *m_savePpsGraphAction;
     QAction *m_saveBpsGraphAction;
     QAction *m_saveBPSGraphAction;
     QAction *m_savePacketLossGraphAction;
-    QAction *m_themeAction;
-    QAction *m_interfaceAction;
-    QAction *m_aboutAction;
-    QAction *m_howToUseAction;
+    QAction *m_lightThemeAction;
+    QAction *m_darkThemeAction;
+    QAction *m_enLanguageAction;
+    QAction *m_uaLanguageAction;
+    //QAction *m_aboutAction;
+    QAction *m_helpAction;
 
     // Buttons
     QPushButton *m_startButton;

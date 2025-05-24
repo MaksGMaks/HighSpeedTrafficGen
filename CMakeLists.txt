@@ -200,12 +200,16 @@ endif()
 
 # Project sources
 set(ALL_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/common_generator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/DPDK_Engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/Generator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/PFRING_Engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/HelpPage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/MainWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/UInt64Validator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/UIUpdate/UIUpdater.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SettingsManager.cpp
 )
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})

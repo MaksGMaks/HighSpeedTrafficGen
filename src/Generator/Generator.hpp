@@ -28,6 +28,7 @@ public slots:
 
 signals:
     void finished();
+    
 private:
     void pfringSend();
     void pfringZCSend();

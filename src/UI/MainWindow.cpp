@@ -2,17 +2,321 @@
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    //, m_interfaces(interfaces) 
+    , m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str())
     {
+    std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
+    setupUtilitiesThread();
     setupUi();
     setupConnections();
+    onRefreshInterfacesActionTriggered();
+    setupSettings();
+    m_utilitiesThread->start();
 }
 
 MainWindow::~MainWindow() {
-    // Cleanup if needed
+    std::cout << "[MainWindow::~MainWindow] Destroying MainWindow" << std::endl;
+    m_generator->doStop();
+    m_utilitiesThread->quit();
+    m_utilitiesThread->wait();
+}
+
+void MainWindow::onStartButtonClicked() {
+    std::cout << "[MainWindow::onStartButtonClicked] Start/Stop button clicked" << std::endl;
+    if(m_startButton->isFlat()) {
+        m_startButton->setFlat(false);
+        m_startButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPlay));
+        m_pauseButton->setEnabled(false);
+        if(m_pauseButton->isFlat()) {
+            m_pauseButton->setFlat(false);
+            m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
+        }
+        emit stopGenerator();
+    } else {
+        if(m_prefferedSpeedLineEdit->text().isEmpty() || m_packetSizeLineEdit->text().isEmpty() ||
+           m_burstSizeLineEdit->text().isEmpty() || m_copiesLineEdit->text().isEmpty() ||
+           m_sentLineEdit->text().isEmpty() || m_packetPatternLineEdit->text().isEmpty()) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Please fill in all fields."));
+            return;
+        } 
+        if(m_fileSendButton->isFlat() && m_pathToFileLineEdit->text().isEmpty()) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Please select a file to send."));
+            return;
+        }
+        if(m_packetSizeLineEdit->text().toInt() < 10) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Packet size must be greater than 10 bytes."));
+            return;
+        }
+        if(m_burstSizeLineEdit->text().toInt() < 1) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Burst size must be at least 1."));
+            return;
+        }
+        if(m_modeComboBox->currentData() == 0) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Please select a valid interface mode."));
+            return;
+        }
+
+        m_startButton->setFlat(true);
+        m_startButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaStop));
+
+        genParams params;
+        params.interfaceName = m_interfaceComboBox->currentText().toStdString();
+        params.mode = m_modeComboBox->currentData().toUInt();
+        params.time = m_timeLineEdit->time().msecsSinceStartOfDay();
+        params.speed = m_prefferedSpeedLineEdit->text().toULongLong();
+        params.packSize = m_packetSizeLineEdit->text().toUInt();
+        params.burstSize = m_burstSizeLineEdit->text().toUInt();
+        params.copies = m_copiesLineEdit->text().toULongLong();
+        params.fileSend = m_fileSendButton->isFlat();
+        params.filePath = m_pathToFileLineEdit->text().toStdString();
+        params.totalSend = m_sentLineEdit->text().toULongLong();
+        params.packetPattern = m_packetPatternLineEdit->text().toStdString();
+
+        m_pauseButton->setEnabled(true);
+        emit startGenerator(params);
+    }
+}
+
+void MainWindow::onPauseButtonClicked() {
+    std::cout << "[MainWindow::onPauseButtonClicked] Pause/Resume button clicked" << std::endl;
+    if(m_pauseButton->isFlat()) {
+        m_pauseButton->setFlat(false);
+        m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
+        emit resumeGenerator();
+    } else {
+        m_pauseButton->setFlat(true);
+        m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaSeekForward));
+        emit pauseGenerator();
+    }
+}
+
+void MainWindow::onFileSendButtonClicked() {
+    std::cout << "[MainWindow::onFileSendButtonClicked] File send button clicked" << std::endl;
+    if(m_fileSendButton->isFlat()) {
+        m_fileSendButton->setFlat(false);
+        m_fileSendButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DialogNoButton));
+    } else {
+        m_fileSendButton->setFlat(true);
+        m_fileSendButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DialogYesButton));
+    }
+}
+
+void MainWindow::onSelectFileButtonClicked() {
+    std::cout << "[MainWindow::onSelectFileButtonClicked] Select file button clicked" << std::endl;
+    QFileDialog fileDialog(this);
+    fileDialog.setOption(QFileDialog::ShowDirsOnly, false);
+    fileDialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    fileDialog.setNameFilter(tr("Text Files (*.txt);;Binary Files (*.bin);;Hex Files (*.hex)"));
+    fileDialog.setViewMode(QFileDialog::Detail);
+    fileDialog.setDirectory(QDir::homePath());
+    fileDialog.setFilter(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
+    fileDialog.setFileMode(QFileDialog::ExistingFiles);
+
+    if (fileDialog.exec() == QDialog::Accepted) {
+        QStringList selectedFiles = fileDialog.selectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            m_pathToFileLineEdit->setText(selectedFiles.first());
+        }
+    }
+}
+
+void MainWindow::onSavePpsGraphActionTriggered() {
+    std::cout << "[MainWindow::onSavePpsGraphActionTriggered] Save PPS graph action triggered" << std::endl;
+    saveGraph(m_ppsChartView);
+}
+
+void MainWindow::onSaveBpsGraphActionTriggered() {
+    std::cout << "[MainWindow::onSaveBpsGraphActionTriggered] Save BPS graph action triggered" << std::endl;
+    saveGraph(m_bpsChartView);
+}
+
+void MainWindow::onSaveBPSGraphActionTriggered() {
+    std::cout << "[MainWindow::onSaveBPSGraphActionTriggered] Save BPS graph action triggered" << std::endl;
+    saveGraph(m_BPSChartView);
+}
+
+void MainWindow::onSavePacketLossGraphActionTriggered() {
+    std::cout << "[MainWindow::onSavePacketLossGraphActionTriggered] Save Packet Loss graph action triggered" << std::endl;
+    saveGraph(m_packetLossChartView);
+}
+
+// void MainWindow::onAboutActionTriggered() {
+//     // Show about dialog logic
+// }
+
+void MainWindow::onHelpActionTriggered() {
+    std::cout << "[MainWindow::onHelpActionTriggered] Help action triggered" << std::endl;
+    if (!m_helpPage->isVisible()) {
+        m_helpPage->show();
+    } else {
+        m_helpPage->raise();
+        m_helpPage->activateWindow();
+    }
+}
+
+void MainWindow::onRefreshInterfacesActionTriggered() {
+    std::cout << "[MainWindow::onRefreshInterfacesActionTriggered] Refresh interfaces action triggered" << std::endl;
+    this->setCursor(Qt::WaitCursor);
+    this->setEnabled(false);
+    m_interfacesMap.clear();
+    m_interfaces.clear();
+    m_interfaceComboBox->clear();
+    m_interfaces = findAllDevices();
+    initialize_dpdk(m_interfaces);
+    for(auto& dev : m_interfaces) {
+        dev.pf_ring_zc_support = check_pfring_zc(dev.interfaceName);
+        dev.pf_ring_standart_support = check_pfring_standard(dev.interfaceName);
+        m_interfacesMap.insert({dev.interfaceName, dev});
+    }
+    for(auto& dev : m_interfaces) {
+        m_interfaceComboBox->addItem(dev.interfaceName.c_str());
+    }
+    m_interfaceComboBox->setCurrentIndex(0);
+    this->setEnabled(true);
+    this->setCursor(Qt::ArrowCursor);
+}
+
+void MainWindow::onInterfaceChanged(const QString &interfaceName) {
+    std::cout << "[MainWindow::onInterfaceChanged] Interface changed to: " << interfaceName.toStdString() << std::endl;
+    m_modeComboBox->clear();
+    if(m_interfacesMap.find(interfaceName.toStdString()) != m_interfacesMap.end()) {
+        auto& dev = m_interfacesMap[interfaceName.toStdString()];
+        if(dev.pf_ring_standart_support) {
+            m_modeComboBox->addItem(tr("PF_RING Standard"), QVariant::fromValue(PF_RING_STANDARD));
+        }
+        if(dev.pf_ring_zc_support) {
+            m_modeComboBox->addItem(tr("PF_RING ZC"), QVariant::fromValue(PF_RING_ZC));
+        }
+        if(dev.dpdk_support) {
+            m_modeComboBox->addItem(tr("DPDK"), QVariant::fromValue(DPDK));
+        }
+        if(!dev.pf_ring_zc_support && !dev.pf_ring_standart_support && !dev.dpdk_support) {
+            m_modeComboBox->addItem(tr("None"), QVariant::fromValue(0));
+        }
+    }
+    m_modeComboBox->setCurrentIndex(0);
+}
+
+void MainWindow::saveGraph(const QChartView *chartView) {
+    std::cout << "[MainWindow::saveGraph] Saving graph" << std::endl;
+    QGraphicsScene* scene = chartView->scene();
+    if (!scene) {
+        QMessageBox::warning(this, "Error", "No graph to save.");
+        return;
+    }
+
+    QString selectedFilter;
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Save Graph As Image",
+        "", // Start in current dir
+        "PNG Image (*.png);;JPEG Image (*.jpg);;BMP Image (*.bmp)",
+        &selectedFilter
+    );
+
+    if (filePath.isEmpty())
+        return; // User canceled
+
+    QString extension = "png"; // default
+    if (selectedFilter.contains("*.jpg"))
+        extension = "jpg";
+    else if (selectedFilter.contains("*.bmp"))
+        extension = "bmp";
+    if (!filePath.endsWith("." + extension, Qt::CaseInsensitive))
+        filePath += "." + extension;
+
+    QRectF sceneRect = scene->itemsBoundingRect();
+    QImage image(sceneRect.size().toSize(), QImage::Format_ARGB32);
+    image.fill(Qt::white); // Optional
+
+    QPainter painter(&image);
+    scene->render(&painter, QRectF(), sceneRect);
+    painter.end();
+
+    if (!image.save(filePath)) {
+        QMessageBox::warning(this, "Save Failed", "Could not save the image.");
+    }
+}
+
+void MainWindow::onThemeChanged(const QString &theme) {
+    std::cout << "[MainWindow::onThemeChanged] Theme changed to: " << theme.toStdString() << std::endl;
+    if (theme == "light") {
+        m_settingsManager.setTheme("light");
+        m_ppsChart->setTheme(QChart::ChartThemeLight);
+        m_bpsChart->setTheme(QChart::ChartThemeLight);
+        m_BPSChart->setTheme(QChart::ChartThemeLight);
+        m_packetLossChart->setTheme(QChart::ChartThemeLight);
+        onApplyStyleSheet(lightStyleSheet);
+    } else {
+        m_settingsManager.setTheme("dark");
+        m_ppsChart->setTheme(QChart::ChartThemeDark);
+        m_bpsChart->setTheme(QChart::ChartThemeDark);
+        m_BPSChart->setTheme(QChart::ChartThemeDark);
+        m_packetLossChart->setTheme(QChart::ChartThemeDark);
+        onApplyStyleSheet(darkStyleSheet);
+    }
+    m_settingsManager.save();
+}
+
+void MainWindow::onLanguageChanged(const QString &language) {
+
+}
+
+void MainWindow::onApplyStyleSheet(const QString &styleSheet) {
+    std::cout << "[MainWindow::onApplyStyleSheet] Applying style sheet" << std::endl;
+    qApp->setStyleSheet(styleSheet);
+}
+
+void MainWindow::setupUtilitiesThread() {
+    std::cout << "[MainWindow::setupUtilitiesThread] Setting up utilities thread" << std::endl;
+    m_utilitiesThread = new QThread(this);
+    m_uiUpdater = new UIUpdater();
+    m_uiUpdater->moveToThread(m_utilitiesThread);
+    m_generator = new Generator();
+    m_generator->moveToThread(m_utilitiesThread);
+}
+
+void MainWindow::setupSettings() {
+    std::cout << "[MainWindow::setupSettings] Setting up settings manager" << std::endl;
+    bool loaded = m_settingsManager.load();
+    if (!loaded) {
+        m_settingsManager.setTheme("light"); // Default theme
+        m_settingsManager.setLanguage("en"); // Default language
+        m_settingsManager.save();
+    }
+
+    // Apply theme from settings
+    emit onThemeChanged(m_settingsManager.theme());
+}
+
+void MainWindow::setupConnections() {
+    std::cout << "[MainWindow::setupConnections] Setting up connections" << std::endl;
+    connect(m_startButton, &QPushButton::clicked, this, &MainWindow::onStartButtonClicked);
+    connect(m_pauseButton, &QPushButton::clicked, this, &MainWindow::onPauseButtonClicked);
+    connect(m_fileSendButton, &QPushButton::clicked, this, &MainWindow::onFileSendButtonClicked);
+    connect(m_selectFileButton, &QPushButton::clicked, this, &MainWindow::onSelectFileButtonClicked);
+
+    connect(m_savePpsGraphAction, &QAction::triggered, this, &MainWindow::onSavePpsGraphActionTriggered);
+    connect(m_saveBpsGraphAction, &QAction::triggered, this, &MainWindow::onSaveBpsGraphActionTriggered);
+    connect(m_saveBPSGraphAction, &QAction::triggered, this, &MainWindow::onSaveBPSGraphActionTriggered);
+    connect(m_savePacketLossGraphAction, &QAction::triggered, this, &MainWindow::onSavePacketLossGraphActionTriggered);
+    connect(m_darkThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("dark"); });
+    connect(m_lightThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("light"); });
+    connect(m_uaLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("ua"); });
+    connect(m_enLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("en"); });
+    //connect(m_aboutAction, &QAction::triggered, this, &MainWindow::onAboutActionTriggered);
+    connect(m_helpAction, &QAction::triggered, this, &MainWindow::onHelpActionTriggered);
+
+    connect(m_refreshInterfacesAction, &QAction::triggered, this, &MainWindow::onRefreshInterfacesActionTriggered);
+    connect(m_interfaceComboBox, &QComboBox::currentTextChanged, this, &MainWindow::onInterfaceChanged);
+
+    connect(this, &MainWindow::startGenerator, m_generator, &Generator::doStart);
+    connect(this, &MainWindow::pauseGenerator, m_generator, &Generator::doPause);
+    connect(this, &MainWindow::resumeGenerator, m_generator, &Generator::doResume);
+    connect(this, &MainWindow::stopGenerator, m_generator, &Generator::doStop);
 }
 
 void MainWindow::setupUi() {
+    std::cout << "[MainWindow::setupUi] Setting up UI" << std::endl;
     // Set up the main window
     setWindowTitle(tr("High Speed Traffic Generator"));
     resize(1200, 800);
@@ -106,16 +410,16 @@ void MainWindow::setupUi() {
     m_totalSendUnitLabel->setFont(font);
     m_totalSendUnitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-
     // Initialize buttons
     m_fileSendButton = new QPushButton(tr("Send File"));
     m_fileSendButton->setMinimumSize(80, 30);
+    m_fileSendButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DialogNoButton));
     m_fileSendButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_selectFileButton = new QPushButton();
-    m_selectFileButton->setMinimumSize(100, 30);
+    m_selectFileButton->setMinimumSize(50, 30);
     m_selectFileButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DirOpenIcon));
-    m_selectFileButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_selectFileButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     
     m_startButton = new QPushButton();
     m_startButton->setMinimumSize(MINIMUM_PARAM_BUTTON_WIDTH, MINIMUM_PARAM_BUTTON_HEIGHT);
@@ -140,27 +444,37 @@ void MainWindow::setupUi() {
     // Initialize line edits
     m_prefferedSpeedLineEdit = new QLineEdit();
     m_prefferedSpeedLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_prefferedSpeedLineEdit->setText("0");
     m_prefferedSpeedLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_packetSizeLineEdit = new QLineEdit();
     m_packetSizeLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_packetSizeLineEdit->setText("10");
+    m_packetSizeLineEdit->setValidator(new QIntValidator(10, 65535, this));
     m_packetSizeLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_burstSizeLineEdit = new QLineEdit();
     m_burstSizeLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_burstSizeLineEdit->setText("1");
+    m_burstSizeLineEdit->setValidator(new QIntValidator(1, 65535, this));
     m_burstSizeLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_copiesLineEdit = new QLineEdit();
     m_copiesLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_copiesLineEdit->setText("0");
+    m_copiesLineEdit->setValidator(new UInt64Validator(0, 0xFFFFFFFFFFFFFFFF, this));
     m_copiesLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_sentLineEdit = new QLineEdit();
     m_sentLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_sentLineEdit->setText("0");
+    m_sentLineEdit->setValidator(new UInt64Validator(0, 0xFFFFFFFFFFFFFFFF, this));
     m_sentLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_packetPatternLineEdit = new QLineEdit();
     m_packetPatternLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
-    m_packetPatternLineEdit->setPlaceholderText("AA");
+    m_packetPatternLineEdit->setText("AA");
+    m_packetPatternLineEdit->setMaxLength(2);
     m_packetPatternLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_pathToFileLineEdit = new QLineEdit();
@@ -346,35 +660,50 @@ void MainWindow::setupUi() {
     // Set up the menu bar
     m_menuBar = new QMenuBar(this);
     m_fileMenu = new QMenu(tr("File"), this);
+    m_refreshInterfacesAction = new QAction(tr("Refresh Interfaces"), this);
+    m_fileMenu->addAction(m_refreshInterfacesAction);
+    m_fileMenu->addSeparator();
     m_savingsMenu = new QMenu(tr("Save.."), this);
     m_savePpsGraphAction = new QAction(tr("Save pps Graph"), this);
     m_saveBpsGraphAction = new QAction(tr("Save bps Graph"), this);
     m_saveBPSGraphAction = new QAction(tr("Save BPS Graph"), this);
     m_savePacketLossGraphAction = new QAction(tr("Save Packet Loss Graph"), this);
     m_savingsMenu->addAction(m_savePpsGraphAction);
+    m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_saveBpsGraphAction);
+    m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_saveBPSGraphAction);
+    m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_savePacketLossGraphAction);
     m_fileMenu->addMenu(m_savingsMenu);
     m_menuBar->addMenu(m_fileMenu);
 
-
     m_settingsMenu = new QMenu(tr("Settings"), this);
-    m_themeAction = new QAction(tr("Theme"), this);
-    m_interfaceAction = new QAction(tr("Language"), this);
-    m_settingsMenu->addAction(m_themeAction);
-    m_settingsMenu->addSeparator();
-    m_settingsMenu->addAction(m_interfaceAction);
+    m_themeMenu = new QMenu(tr("Theme"), this);
+    m_darkThemeAction = new QAction(tr("Dark"), this);
+    m_lightThemeAction = new QAction(tr("Light"), this);
+    m_themeMenu->addAction(m_darkThemeAction);
+    m_themeMenu->addSeparator();
+    m_themeMenu->addAction(m_lightThemeAction);
+    m_settingsMenu->addMenu(m_themeMenu);
+    m_languageMenu = new QMenu(tr("Language"), this);
+    m_uaLanguageAction = new QAction("Українська", this);
+    m_enLanguageAction = new QAction("English", this);
+    m_languageMenu->addAction(m_uaLanguageAction);
+    m_languageMenu->addSeparator();
+    m_languageMenu->addAction(m_enLanguageAction);
+    m_settingsMenu->addMenu(m_languageMenu);
     m_menuBar->addMenu(m_settingsMenu);
     
-    m_aboutAction = new QAction(tr("About"), this);
-    m_howToUseAction = new QAction(tr("How to use"), this);
-    m_menuBar->addAction(m_howToUseAction);
-    m_menuBar->addSeparator();
-    m_menuBar->addAction(m_aboutAction);   
+    //m_aboutAction = new QAction(tr("About"), this);
+    m_helpAction = new QAction(tr("Help"), this);
+    m_menuBar->addAction(m_helpAction);
+    //m_menuBar->addSeparator();
+    //m_menuBar->addAction(m_aboutAction);   
     this->setMenuBar(m_menuBar);
-}
 
-void MainWindow::setupConnections() {
-
+    // Set up help tooltips
+    m_helpPage = new HelpPage(this);
+    m_helpPage->setMinimumSize(600, 400);
+    
 }

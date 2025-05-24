@@ -1,7 +1,7 @@
 #include "DPDK_Engine.hpp"
 
 void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
-    std::vector<char*> argv = {"detect", "-c", "2", "--huge-dir=/mnt/huge"};
+    std::vector<char*> argv = {"detect", "--huge-dir=/mnt/huge"};
     //const char* argv[] = {"detect", "-c", "2", "--huge-dir=/mnt/huge"};
 
     if(!isHugepageMounted("/mnt/huge")) {
@@ -9,7 +9,7 @@ void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
                      "Make sure it reserves 2MB for dpdk. If not - run \necho 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages" << std::endl;
     }
 
-    int argc = 4;
+    int argc = static_cast<int>(argv.size());
 
     if (rte_eal_init(argc, const_cast<char**>(argv.data())) < 0) {
         std::cerr << "Failed to initialize DPDK EAL\n";
