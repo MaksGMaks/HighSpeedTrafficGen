@@ -112,8 +112,8 @@ void Generator::pfringSend() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        ++totalCopies;
-        totalSend += packet.size();
+        totalCopies += rc;
+        totalSend += packet.size() * rc;
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -208,13 +208,13 @@ void Generator::pfringSendFile() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        totalSend += packet.size();
         if((offset + m_params.packSize) >= fileSize - 1) {
             offset = 0;
-            ++totalCopies;
         } else {
             offset += m_params.packSize;
         }
+        totalCopies += rc;
+        totalSend += packet.size() * rc;
 
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || (totalCopies == m_params.copies && m_params.copies != 0) || totalSend == m_params.totalSend )
@@ -317,8 +317,8 @@ void Generator::pfringZCSend() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        ++totalCopies;
-        totalSend += packet.size();
+        totalCopies += sent;
+        totalSend += packet.size() * sent;
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -450,8 +450,8 @@ void Generator::pfringZCSendFile() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        ++totalCopies;
-        totalSend += packet.size();
+        totalCopies += sent;
+        totalSend += packet.size() * sent;
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -572,8 +572,8 @@ void Generator::dpdkSend() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        ++totalCopies;
-        totalSend += packet.size();
+        totalCopies += sent;
+        totalSend += packet.size() * sent;
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -720,8 +720,8 @@ void Generator::dpdkSendFile() {
         // END SEND
 
         clock_gettime(CLOCK_MONOTONIC, &currTime);
-        ++totalCopies;
-        totalSend += packet.size();
+        totalCopies += sent;
+        totalSend += packet.size() * sent;
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
