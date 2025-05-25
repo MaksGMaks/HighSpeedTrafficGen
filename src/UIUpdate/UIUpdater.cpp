@@ -7,15 +7,19 @@ UIUpdater::UIUpdater(QObject *parent)
 
 void UIUpdater::onSendProgress(const uint64_t &totalSend, const uint64_t &totalCopies
 , const struct timespec &startTime) {
-    int64_t elapsedTime = (startTime.tv_sec - m_prevTime);
-    m_totalTime += elapsedTime;
-    m_totalLost += (totalCopies - m_prevTotalCopies);
+    int64_t elapsedTime;
+    if(startTime.tv_sec == 0) {
+        elapsedTime = 0;
+    } else {
+        elapsedTime = (startTime.tv_sec - m_prevTime);
+    }
     if(elapsedTime >= 1) {
+        std::cout << "[UIUpdater::onSendProgress] Elapsed time: " << elapsedTime << " seconds" << std::endl;
         uint64_t speed = ((totalSend - m_prevTotalSend) / elapsedTime);
         m_prevTime = startTime.tv_sec;
         m_prevTotalSend = totalSend;
         uint64_t pps = (totalCopies - m_prevTotalCopies) / elapsedTime;
-        emit updateGraph(pps, (speed * 8), speed, m_totalLost, m_totalTime);
+        emit updateGraph(pps, (speed * 8), speed, elapsedTime);
         m_prevTotalCopies = totalCopies;
         m_totalLost = 0;
         emit updateDynamicVariables(totalSend, totalCopies);
@@ -25,19 +29,23 @@ void UIUpdater::onSendProgress(const uint64_t &totalSend, const uint64_t &totalC
 
 void UIUpdater::onSendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime
 , const std::string &interfaceName) {
-    int64_t elapsedTime = (startTime.tv_sec - m_prevTime);
-    m_totalTime += elapsedTime;
-    m_totalLost += (totalCopies - m_prevTotalCopies);
+    int64_t elapsedTime;
+    if(startTime.tv_sec == 0) {
+        elapsedTime = 0;
+    } else {
+        elapsedTime = (startTime.tv_sec - m_prevTime);
+    }
     if(elapsedTime >= 1) {
+        std::cout << "[UIUpdater::onSendProgress] Elapsed time: " << elapsedTime << " seconds" << std::endl;
         readDynamicVariables(interfaceName);
         uint64_t speed = ((m_fileBytes - m_prevTotalSend) / elapsedTime);
         m_prevTime = startTime.tv_sec;
         m_prevTotalSend = m_fileBytes;
-        uint64_t pps = (m_filePackets - m_prevTotalCopies) / elapsedTime;
-        emit updateGraph(pps, (speed * 8), speed, m_totalLost, m_totalTime);
+        uint64_t pps = (totalCopies - m_prevTotalCopies) / elapsedTime;
+        emit updateGraph(pps, (speed * 8), speed, elapsedTime);
         m_prevTotalCopies = totalCopies;
         m_totalLost = 0;
-        emit updateDynamicVariables(m_fileBytes, m_prevTotalCopies);
+        emit updateDynamicVariables(m_fileBytes, totalCopies);
     }
 }
 
@@ -70,4 +78,14 @@ void UIUpdater::readDynamicVariables(const std::string &interfaceName) {
             return;
         }
     }
+}
+
+void UIUpdater::onStartGenerator() {
+    m_prevTime = 0;
+    m_prevTotalSend = 0;
+    m_prevTotalCopies = 0;
+    m_totalLost = 0;
+    m_filePackets = 0;
+    m_fileBytes = 0;
+    m_fileDrops = 0;
 }

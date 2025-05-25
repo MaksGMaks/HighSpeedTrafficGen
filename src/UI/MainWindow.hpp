@@ -1,5 +1,10 @@
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
+#include <filesystem>
+#include <iostream>
+#include <unordered_map>
 #include <vector>
 
 #include <QApplication>
@@ -20,8 +25,10 @@
 #include <QSpacerItem>
 #include <QTabWidget>
 #include <QThread>
+#include <QTime>
 #include <QTimeEdit>
 #include <QVBoxLayout>
+#include <QValueAxis>
 
 #include "commonUI.hpp"
 #include "HelpPage.hpp"
@@ -71,10 +78,8 @@ public slots:
     void onFileSendButtonClicked();
     void onSelectFileButtonClicked();
 
-    void onSavePpsGraphActionTriggered();
     void onSaveBpsGraphActionTriggered();
     void onSaveBPSGraphActionTriggered();
-    void onSavePacketLossGraphActionTriggered();
     //void onAboutActionTriggered();
     void onHelpActionTriggered();
 
@@ -88,8 +93,7 @@ public slots:
     void onApplyStyleSheet(const QString &styleSheet);
     void onGeneratorFinished();
 
-    void onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS
-                       , const uint64_t &packetLoss, const uint64_t &totalTime);
+    void onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS, const int64_t &time);
     void onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies);
 
 private:
@@ -110,24 +114,30 @@ private:
     UIUpdater *m_uiUpdater;
 
     bool m_dpdkInitialized;
+    bool m_isFromZero;
+    uint64_t m_totalTime;
+
+    enum class BpsUnit { BPS, KBPS, MBPS, GBPS };
+    BpsUnit m_currentBpsUnit = BpsUnit::BPS;
+    enum class BPSUnit { BPS, KBPS, MBPS, GBPS };
+    BPSUnit m_currentBPSUnit = BPSUnit::BPS;
 
     // UI elements
     // Tabs
     QTabWidget *m_tabWidget;
 
     // Charts
-    QLineSeries *m_ppsSeries;
-    QChart *m_ppsChart;
-    QChartView *m_ppsChartView;
     QLineSeries *m_bpsSeries;
     QChart *m_bpsChart;
+    QValueAxis *m_bpsAxisX;
+    QValueAxis *m_bpsAxisY;
     QChartView *m_bpsChartView;
+
     QLineSeries *m_BPSSeries;
     QChart *m_BPSChart;
+    QValueAxis *m_BPSAxisX;
+    QValueAxis *m_BPSAxisY;
     QChartView *m_BPSChartView;
-    QLineSeries *m_packetLossSeries;
-    QChart *m_packetLossChart;
-    QChartView *m_packetLossChartView;
 
     // Menu Bar
     QMenuBar *m_menuBar;
@@ -138,10 +148,8 @@ private:
     QMenu *m_languageMenu;
 
     QAction *m_refreshInterfacesAction;
-    QAction *m_savePpsGraphAction;
     QAction *m_saveBpsGraphAction;
     QAction *m_saveBPSGraphAction;
-    QAction *m_savePacketLossGraphAction;
     QAction *m_lightThemeAction;
     QAction *m_darkThemeAction;
     QAction *m_enLanguageAction;
@@ -167,6 +175,7 @@ private:
 
     QLabel *m_timeLabel;
     QLabel *m_speedLabel;
+    QLabel *m_ppsLabel;
     QLabel *m_totalSendLabel;
     QLabel *m_totalCopiesLabel;
 
@@ -183,6 +192,7 @@ private:
     QLineEdit *m_pathToFileLineEdit;
 
     QLineEdit *m_speedLineEdit;
+    QLineEdit *m_ppsLineEdit;
     QLineEdit *m_totalSendLineEdit;
     QLineEdit *m_totalCopiesLineEdit;
     QTimeEdit *m_timeLineEdit;

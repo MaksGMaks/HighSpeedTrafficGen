@@ -11,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
     onRefreshInterfacesActionTriggered();
     setupSettings();
     m_utilitiesThread->start();
+    m_totalTime = 0;
 }
 
 MainWindow::~MainWindow() {
@@ -30,7 +31,8 @@ void MainWindow::onStartButtonClicked() {
             m_pauseButton->setFlat(false);
             m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
         }
-        m_parametersGroupBox->setFocusPolicy(Qt::StrongFocus);
+        m_parametersGroupBox->setEnabled(true);
+        m_timeLineEdit->setEnabled(true);
         emit stopGenerator();
     } else {
         if(m_prefferedSpeedLineEdit->text().isEmpty() || m_packetSizeLineEdit->text().isEmpty() ||
@@ -74,16 +76,23 @@ void MainWindow::onStartButtonClicked() {
         params.totalSend = m_sentLineEdit->text().toULongLong();
         params.packetPattern =  m_packetPatternLineEdit->text().toUInt(nullptr, 16);
 
+        m_isFromZero = (m_timeLineEdit->time().msecsSinceStartOfDay() == 0);
         m_pauseButton->setEnabled(true);
-        m_parametersGroupBox->setFocusPolicy(Qt::NoFocus);
+        m_parametersGroupBox->setEnabled(false);
 
-        m_ppsSeries->clear();
         m_bpsSeries->clear();
         m_BPSSeries->clear();
-        m_packetLossSeries->clear();
         m_totalCopiesLineEdit->setText("0");
         m_totalSendLineEdit->setText("0");
         m_speedLineEdit->setText("0");
+        m_ppsLineEdit->setText("0");
+        m_totalTime = 0;
+        m_bpsAxisX->setRange(0, 10);
+        m_BPSAxisX->setRange(0, 10);
+        m_bpsAxisY->setRange(0, 100);
+        m_BPSAxisY->setRange(0, 100);
+        
+        m_timeLineEdit->setEnabled(false);
 
         emit startGenerator(params);
     }
@@ -132,11 +141,6 @@ void MainWindow::onSelectFileButtonClicked() {
     }
 }
 
-void MainWindow::onSavePpsGraphActionTriggered() {
-    std::cout << "[MainWindow::onSavePpsGraphActionTriggered] Save PPS graph action triggered" << std::endl;
-    saveGraph(m_ppsChartView);
-}
-
 void MainWindow::onSaveBpsGraphActionTriggered() {
     std::cout << "[MainWindow::onSaveBpsGraphActionTriggered] Save BPS graph action triggered" << std::endl;
     saveGraph(m_bpsChartView);
@@ -145,11 +149,6 @@ void MainWindow::onSaveBpsGraphActionTriggered() {
 void MainWindow::onSaveBPSGraphActionTriggered() {
     std::cout << "[MainWindow::onSaveBPSGraphActionTriggered] Save BPS graph action triggered" << std::endl;
     saveGraph(m_BPSChartView);
-}
-
-void MainWindow::onSavePacketLossGraphActionTriggered() {
-    std::cout << "[MainWindow::onSavePacketLossGraphActionTriggered] Save Packet Loss graph action triggered" << std::endl;
-    saveGraph(m_packetLossChartView);
 }
 
 // void MainWindow::onAboutActionTriggered() {
@@ -256,17 +255,13 @@ void MainWindow::onThemeChanged(const QString &theme) {
     std::cout << "[MainWindow::onThemeChanged] Theme changed to: " << theme.toStdString() << std::endl;
     if (theme == "light") {
         m_settingsManager.setTheme("light");
-        m_ppsChart->setTheme(QChart::ChartThemeLight);
         m_bpsChart->setTheme(QChart::ChartThemeLight);
         m_BPSChart->setTheme(QChart::ChartThemeLight);
-        m_packetLossChart->setTheme(QChart::ChartThemeLight);
         onApplyStyleSheet(lightStyleSheet);
     } else {
         m_settingsManager.setTheme("dark");
-        m_ppsChart->setTheme(QChart::ChartThemeDark);
         m_bpsChart->setTheme(QChart::ChartThemeDark);
         m_BPSChart->setTheme(QChart::ChartThemeDark);
-        m_packetLossChart->setTheme(QChart::ChartThemeDark);
         onApplyStyleSheet(darkStyleSheet);
     }
     m_settingsManager.save();
@@ -288,37 +283,104 @@ void MainWindow::onGeneratorFinished() {
     m_pauseButton->setEnabled(false);
     m_pauseButton->setFlat(false);
     m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
-    m_parametersGroupBox->setFocusPolicy(Qt::StrongFocus);
+    m_parametersGroupBox->setEnabled(true);
+    m_timeLineEdit->setEnabled(true);
+    if(!m_isFromZero) {
+        m_timeLineEdit->setTime(QTime(0, 0, 0));
+    }
 }
 
-void MainWindow::onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS
-, const uint64_t &packetLoss, const uint64_t &totalTime) {
+void MainWindow::onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS, const int64_t &time) {
+    QTime currentTime = m_timeLineEdit->time();
+    if(m_isFromZero && !(time <= 0)) {
+        m_timeLineEdit->setTime(currentTime.addSecs(1));
+    } else if(!(time <= 0)) {
+        m_timeLineEdit->setTime(currentTime.addSecs(-1));
+    }
+    m_ppsLineEdit->setText(QString::number(pps));
+    m_bpsSeries->append(m_totalTime, bps);
+    m_BPSSeries->append(m_totalTime, BPS);
 
-    
-    m_ppsSeries->append(totalTime, pps);
-    m_bpsSeries->append(totalTime, bps);
-    m_BPSSeries->append(totalTime, BPS);
-    m_packetLossSeries->append(totalTime, packetLoss);
-    m_ppsChartView->update();
+// Adjust X-axis (time)
+if (m_totalTime > 10) {
+    m_bpsAxisX->setRange(m_totalTime - 10, m_totalTime);
+    m_BPSAxisX->setRange(m_totalTime - 10, m_totalTime);
+}
+m_totalTime += 1;
+
+// --- Detect and apply unit for BPS (bytes/sec) chart
+    uint64_t accumulatedBPS = BPS;
+    QString unitLabel;
+    long double displayValue = accumulatedBPS;
+    QString axisLabelFormat;
+    if (accumulatedBPS >= (1024ULL * 1024 * 1024)) {
+        axisLabelFormat = "%.2f GB/s";
+        unitLabel = "GB/s";
+        displayValue = accumulatedBPS / (long double)(1024ULL * 1024 * 1024);
+    } else if (accumulatedBPS >= (1024ULL * 1024)) {
+        axisLabelFormat = "%.2f MB/s";
+        unitLabel = "MB/s";
+        displayValue = accumulatedBPS / (long double)(1024 * 1024);
+    } else if (accumulatedBPS >= 1024) {
+        axisLabelFormat = "%.2f KB/s";
+        unitLabel = "KB/s";
+        displayValue = accumulatedBPS / 1024.0;
+    } else {
+        axisLabelFormat = "%d B/s";
+        unitLabel = "B/s";
+    }
+
+    m_BPSAxisY->setLabelFormat(axisLabelFormat);
+    m_speedUnitLabel->setText(unitLabel);
+    m_speedLineEdit->setText(QString::number(displayValue, 'f', 2));
+
+    // --- Detect and apply unit for bps chart
+    BpsUnit newUnit = BpsUnit::BPS;
+    long double bpsScale = 1.0;
+    QString bpsFormat = "%d bps";
+    if (bps >= (1000ULL * 1000 * 1000)) {
+        newUnit = BpsUnit::GBPS;
+        bpsScale = 1000.0 * 1000 * 1000;
+        bpsFormat = "%.2f Gbps";
+    } else if (bps >= (1000ULL * 1000)) {
+        newUnit = BpsUnit::MBPS;
+        bpsScale = 1000.0 * 1000;
+        bpsFormat = "%.2f Mbps";
+    } else if (bps >= 1000) {
+        newUnit = BpsUnit::KBPS;
+        bpsScale = 1000.0;
+        bpsFormat = "%.2f Kbps";
+    }
+
+    m_bpsAxisY->setLabelFormat(bpsFormat);
+
+    // --- Scale previous data if unit changed
+    if (m_currentBpsUnit != newUnit) {
+        double oldScale = 1.0;
+        switch (m_currentBpsUnit) {
+            case BpsUnit::BPS:  oldScale = 1.0; break;
+            case BpsUnit::KBPS: oldScale = 1000.0; break;
+            case BpsUnit::MBPS: oldScale = 1000000.0; break;
+            case BpsUnit::GBPS: oldScale = 1000000000.0; break;
+        }
+
+        for (int i = 0; i < m_bpsSeries->count(); ++i) {
+            QPointF pt = m_bpsSeries->at(i);
+            double bpsVal = pt.y() * oldScale;       // convert to raw bps
+            pt.setY(bpsVal / bpsScale);              // convert to new scale
+            m_bpsSeries->replace(i, pt);
+        }
+
+        m_currentBpsUnit = newUnit;
+    }
+
+    // --- Adjust Y axis ranges
+    // m_bpsAxisY->setRange(0, niceCeil(std::max(bps / bpsScale, (long double)m_bpsAxisY->max())));
+    // m_BPSAxisY->setRange(0, niceBPSCeil);
+
+    // --- Refresh UI
     m_bpsChartView->update();
     m_BPSChartView->update();
-    m_packetLossChartView->update();
-    if(BPS >= (1024 * 1024 * 1024)) {
-        m_speedUnitLabel->setText("GB/s");
-        m_speedLineEdit->setText(QString::number((long double)BPS / (1024 * 1024 * 1024), 'f', 2));
-    } else if(BPS >= (1024 * 1024)) {
-        m_speedUnitLabel->setText("MB/s");
-        m_speedLineEdit->setText(QString::number((long double)BPS / (1024 * 1024), 'f', 2));
-    } else if(BPS >= (1024)) {
-        m_speedUnitLabel->setText("KB/s");
-        m_speedLineEdit->setText(QString::number((long double)BPS / 1024, 'f', 2));
-    } else {
-        m_speedUnitLabel->setText("B/s");
-        m_speedLineEdit->setText(QString::number(BPS, 'f', 2));
-    }
-    
-    // 10 485 760 | 10 526 654 464
-    
 }
 
 void MainWindow::onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies) {
@@ -355,10 +417,8 @@ void MainWindow::setupConnections() {
     connect(m_fileSendButton, &QPushButton::clicked, this, &MainWindow::onFileSendButtonClicked);
     connect(m_selectFileButton, &QPushButton::clicked, this, &MainWindow::onSelectFileButtonClicked);
 
-    connect(m_savePpsGraphAction, &QAction::triggered, this, &MainWindow::onSavePpsGraphActionTriggered);
     connect(m_saveBpsGraphAction, &QAction::triggered, this, &MainWindow::onSaveBpsGraphActionTriggered);
     connect(m_saveBPSGraphAction, &QAction::triggered, this, &MainWindow::onSaveBPSGraphActionTriggered);
-    connect(m_savePacketLossGraphAction, &QAction::triggered, this, &MainWindow::onSavePacketLossGraphActionTriggered);
     connect(m_darkThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("dark"); });
     connect(m_lightThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("light"); });
     connect(m_uaLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("ua"); });
@@ -373,6 +433,7 @@ void MainWindow::setupConnections() {
     connect(this, &MainWindow::pauseGenerator, m_generator, &Generator::doPause);
     connect(this, &MainWindow::resumeGenerator, m_generator, &Generator::doResume);
     connect(this, &MainWindow::stopGenerator, m_generator, &Generator::doStop);
+    connect(this, &MainWindow::startGenerator, m_uiUpdater, &UIUpdater::onStartGenerator);
     connect(m_generator, &Generator::sendProgress, m_uiUpdater, &UIUpdater::onSendProgress);
     connect(m_generator, &Generator::sendHalfProgress, m_uiUpdater, &UIUpdater::onSendHalfProgress);
     connect(m_generator, &Generator::finished, this, &MainWindow::onGeneratorFinished);
@@ -451,6 +512,12 @@ void MainWindow::setupUi() {
     m_speedLabel->setAlignment(Qt::AlignCenter);
     m_speedLabel->setFont(font);
     m_speedLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+    m_ppsLabel = new QLabel(tr("PPS:"));
+    m_ppsLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
+    m_ppsLabel->setAlignment(Qt::AlignCenter);
+    m_ppsLabel->setFont(font);
+    m_ppsLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_totalSendLabel = new QLabel(tr("Total Sent:"));
     m_totalSendLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
@@ -566,6 +633,13 @@ void MainWindow::setupUi() {
     m_speedLineEdit->setText("0");
     m_speedLineEdit->setAlignment(Qt::AlignRight);
     m_speedLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+    m_ppsLineEdit = new QLineEdit();
+    m_ppsLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
+    m_ppsLineEdit->setReadOnly(true);
+    m_ppsLineEdit->setText("0");
+    m_ppsLineEdit->setAlignment(Qt::AlignRight);
+    m_ppsLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_totalSendLineEdit = new QLineEdit();
     m_totalSendLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
@@ -582,53 +656,45 @@ void MainWindow::setupUi() {
     m_totalCopiesLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
     // Initialize charts
-    m_ppsSeries = new QLineSeries();
-    m_ppsChart = new QChart();
-    m_ppsChart->setTitle(tr("Packets per second"));
-    m_ppsChart->setAnimationOptions(QChart::AllAnimations);
-    m_ppsChart->setTheme(QChart::ChartThemeDark);
-    m_ppsChart->legend()->hide();
-    m_ppsChart->addSeries(m_ppsSeries);
-    m_ppsChart->createDefaultAxes();
-    m_ppsChartView = new QChartView(m_ppsChart);
-    
     m_bpsSeries = new QLineSeries();
     m_bpsChart = new QChart();
     m_bpsChart->setTitle(tr("Bits per second"));
-    m_bpsChart->setAnimationOptions(QChart::AllAnimations);
+    m_bpsChart->setAnimationOptions(QChart::NoAnimation);
     m_bpsChart->setTheme(QChart::ChartThemeDark);
-    m_bpsChart->legend()->hide();
     m_bpsChart->addSeries(m_bpsSeries);
-    m_bpsChart->createDefaultAxes();
+    m_bpsChart->legend()->hide();
+    m_bpsAxisX = new QValueAxis();
+    m_bpsAxisX->setRange(0, 10);
+    m_bpsAxisY = new QValueAxis();
+    m_bpsAxisY->setRange(0, 100);
+    m_bpsChart->addAxis(m_bpsAxisX, Qt::AlignBottom);
+    m_bpsChart->addAxis(m_bpsAxisY, Qt::AlignLeft);
+    m_bpsSeries->attachAxis(m_bpsAxisX);
+    m_bpsSeries->attachAxis(m_bpsAxisY);
     m_bpsChartView = new QChartView(m_bpsChart);
     
     m_BPSSeries = new QLineSeries();
     m_BPSChart = new QChart();
     m_BPSChart->setTitle(tr("Bytes per second"));
-    m_BPSChart->setAnimationOptions(QChart::AllAnimations);
+    m_BPSChart->setAnimationOptions(QChart::NoAnimation);
     m_BPSChart->setTheme(QChart::ChartThemeDark);
-    m_BPSChart->legend()->hide();
     m_BPSChart->addSeries(m_BPSSeries);
-    m_BPSChart->createDefaultAxes();
+    m_BPSChart->legend()->hide();
+    m_BPSAxisX = new QValueAxis();
+    m_BPSAxisX->setRange(0, 10);
+    m_BPSAxisY = new QValueAxis();
+    m_BPSAxisY->setRange(0, 100);
+    m_BPSChart->addAxis(m_BPSAxisX, Qt::AlignBottom);
+    m_BPSChart->addAxis(m_BPSAxisY, Qt::AlignLeft);
+    m_BPSSeries->attachAxis(m_BPSAxisX);
+    m_BPSSeries->attachAxis(m_BPSAxisY);
     m_BPSChartView = new QChartView(m_BPSChart);
     
-    m_packetLossSeries = new QLineSeries();
-    m_packetLossChart = new QChart();
-    m_packetLossChart->setTitle(tr("Packet Loss"));
-    m_packetLossChart->setAnimationOptions(QChart::AllAnimations);
-    m_packetLossChart->setTheme(QChart::ChartThemeDark);
-    m_packetLossChart->legend()->hide();
-    m_packetLossChart->addSeries(m_packetLossSeries);
-    m_packetLossChart->createDefaultAxes();
-    m_packetLossChartView = new QChartView(m_packetLossChart);
-
     // Initialize tab widget
     m_tabWidget = new QTabWidget();
     m_tabWidget->setMinimumSize(300, 400);
-    m_tabWidget->addTab(m_ppsChartView, tr("Packets per second"));
     m_tabWidget->addTab(m_bpsChartView, tr("Bits per second"));
     m_tabWidget->addTab(m_BPSChartView, tr("Bytes per second"));
-    m_tabWidget->addTab(m_packetLossChartView, tr("Packet Loss"));
     m_tabWidget->setCurrentIndex(0);
     m_tabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
@@ -667,6 +733,8 @@ void MainWindow::setupUi() {
     m_infoLayout = new QVBoxLayout();
     m_infoLayout->addWidget(m_speedLabel);
     m_infoLayout->addLayout(m_speedLayout);
+    m_infoLayout->addWidget(m_ppsLabel);
+    m_infoLayout->addWidget(m_ppsLineEdit);
     m_infoLayout->addWidget(m_totalSendLabel);
     m_infoLayout->addLayout(m_totalSendLayout);
     m_infoLayout->addWidget(m_totalCopiesLabel);
@@ -750,17 +818,11 @@ void MainWindow::setupUi() {
     m_fileMenu->addAction(m_refreshInterfacesAction);
     m_fileMenu->addSeparator();
     m_savingsMenu = new QMenu(tr("Save.."), this);
-    m_savePpsGraphAction = new QAction(tr("Save pps Graph"), this);
     m_saveBpsGraphAction = new QAction(tr("Save bps Graph"), this);
     m_saveBPSGraphAction = new QAction(tr("Save BPS Graph"), this);
-    m_savePacketLossGraphAction = new QAction(tr("Save Packet Loss Graph"), this);
-    m_savingsMenu->addAction(m_savePpsGraphAction);
-    m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_saveBpsGraphAction);
     m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_saveBPSGraphAction);
-    m_savingsMenu->addSeparator();
-    m_savingsMenu->addAction(m_savePacketLossGraphAction);
     m_fileMenu->addMenu(m_savingsMenu);
     m_menuBar->addMenu(m_fileMenu);
 
