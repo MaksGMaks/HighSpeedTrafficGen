@@ -28,8 +28,8 @@ public slots:
 
 signals:
     void finished();
-    void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime
-                    , const uint64_t &packetSize, const uint64_t &burstSize); 
+    void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime); 
+    void sendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime, const std::string &interfaceName);
 
 private:
     void pfringSend();

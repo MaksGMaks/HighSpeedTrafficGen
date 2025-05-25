@@ -374,6 +374,7 @@ void MainWindow::setupConnections() {
     connect(this, &MainWindow::resumeGenerator, m_generator, &Generator::doResume);
     connect(this, &MainWindow::stopGenerator, m_generator, &Generator::doStop);
     connect(m_generator, &Generator::sendProgress, m_uiUpdater, &UIUpdater::onSendProgress);
+    connect(m_generator, &Generator::sendHalfProgress, m_uiUpdater, &UIUpdater::onSendHalfProgress);
     connect(m_generator, &Generator::finished, this, &MainWindow::onGeneratorFinished);
 
     connect(m_uiUpdater, &UIUpdater::updateGraph, this, &MainWindow::onUpdateGraph);

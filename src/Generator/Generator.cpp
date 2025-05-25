@@ -94,7 +94,7 @@ void Generator::pfringSend() {
     uint64_t internalNS = 1e9 * bytesPerPacket / m_params.speed;
     uint64_t nextTime, sleepNS;
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendHalfProgress(0, startTime, m_params.interfaceName);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
@@ -118,7 +118,7 @@ void Generator::pfringSend() {
         if(rc = packet.size()) {
             totalCopies++;
         }
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -195,7 +195,7 @@ void Generator::pfringSendFile() {
     uint64_t nextTime, sleepNS;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendHalfProgress(0, startTime, m_params.interfaceName);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec; 
     while (isRunning) {
         {
@@ -224,7 +224,7 @@ void Generator::pfringSendFile() {
         totalCopies += rc;
         totalSend += packet.size() * rc;
 
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || (totalCopies == m_params.copies && m_params.copies != 0) || totalSend == m_params.totalSend )
             break;
@@ -307,7 +307,7 @@ void Generator::pfringZCSend() {
     uint64_t nextTime, sleepNS;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendHalfProgress(0, startTime, m_params.interfaceName);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
@@ -329,7 +329,7 @@ void Generator::pfringZCSend() {
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         totalCopies += sent;
         totalSend += packet.size() * sent;
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -442,7 +442,7 @@ void Generator::pfringZCSendFile() {
     uint64_t nextTime, sleepNS;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendHalfProgress(0, startTime, m_params.interfaceName);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
@@ -464,7 +464,7 @@ void Generator::pfringZCSendFile() {
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         totalCopies += sent;
         totalSend += packet.size() * sent;
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -573,7 +573,7 @@ void Generator::dpdkSend() {
     uint64_t nextTime, sleepNS;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendProgress(0, 0, startTime);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
@@ -594,7 +594,7 @@ void Generator::dpdkSend() {
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         totalCopies += sent;
         totalSend += packet.size() * sent;
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendProgress(totalSend, totalCopies, currTime);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;
@@ -728,7 +728,7 @@ void Generator::dpdkSendFile() {
     uint64_t nextTime, sleepNS;
 
     clock_gettime(CLOCK_MONOTONIC, &startTime);
-    emit sendProgress(0, 0, startTime, m_params.packSize, m_params.burstSize);
+    emit sendProgress(0, 0, startTime);
     nextTime = startTime.tv_sec * 1'000'000'000ULL + startTime.tv_nsec;
     while (isRunning) {
         {
@@ -749,7 +749,7 @@ void Generator::dpdkSendFile() {
         clock_gettime(CLOCK_MONOTONIC, &currTime);
         totalCopies += sent;
         totalSend += packet.size() * sent;
-        emit sendProgress(totalSend, totalCopies, currTime, m_params.packSize, m_params.burstSize);
+        emit sendProgress(totalSend, totalCopies, currTime);
         if(((currTime.tv_sec - startTime.tv_sec) > m_params.time && m_params.time != 0) 
             || totalCopies == m_params.copies || totalSend == m_params.totalSend )
             break;

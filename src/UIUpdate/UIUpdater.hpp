@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <sstream>
+
 #include <QObject>
 
 class UIUpdater : public QObject {
@@ -13,8 +19,10 @@ signals:
     void updateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies);
 
 public slots:
-    void onSendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime
-                        , const uint64_t &packetSize, const uint64_t &burstSize);
+    void onSendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime);
+    void onSendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime, const std::string &interfaceName);
 private:
     uint64_t m_prevTotalSend = 0, m_prevTotalCopies = 0, m_totalLost = 0, m_totalTime = 0, m_prevTime = 0; 
+    uint64_t m_filePackets = 0, m_fileBytes = 0, m_fileDrops = 0;
+    void readDynamicVariables(const std::string &interfaceName);
 };
