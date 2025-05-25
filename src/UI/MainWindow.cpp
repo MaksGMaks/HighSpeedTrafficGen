@@ -286,7 +286,7 @@ void MainWindow::onGeneratorFinished() {
     m_parametersGroupBox->setEnabled(true);
     m_timeLineEdit->setEnabled(true);
     if(!m_isFromZero) {
-        m_timeLineEdit->setTime(QTime(0, 0, 0));
+        m_timeLineEdit->setTime(m_timeLineEdit->time().addSecs(1));
     }
 }
 
@@ -418,6 +418,20 @@ void MainWindow::onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const u
 void MainWindow::onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies) {
     m_totalSendLineEdit->setText(QString::number(totalSend));
     m_totalCopiesLineEdit->setText(QString::number(totalCopies));
+}
+
+void MainWindow::onWarning(const std::string &message) {
+    if( !m_lastWarningMessage.empty() && m_lastWarningMessage != message ) {
+        QMessageBox::warning(this, tr("Warning"), QString::fromStdString(message));
+        m_lastWarningMessage = message;
+    }
+}
+
+void MainWindow::onError(const std::string &message) {
+    if( !m_lastErrorMessage.empty() && m_lastErrorMessage != message ) {
+        QMessageBox::critical(this, tr("Error"), QString::fromStdString(message));
+        m_lastErrorMessage = message;
+    }
 }
 
 void MainWindow::setupUtilitiesThread() {
@@ -615,13 +629,13 @@ void MainWindow::setupUi() {
     m_packetSizeLineEdit = new QLineEdit();
     m_packetSizeLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_packetSizeLineEdit->setText("10");
-    m_packetSizeLineEdit->setValidator(new QIntValidator(10, 65535, this));
+    m_packetSizeLineEdit->setValidator(new QIntValidator(10, 65536, this));
     m_packetSizeLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_burstSizeLineEdit = new QLineEdit();
     m_burstSizeLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_burstSizeLineEdit->setText("1");
-    m_burstSizeLineEdit->setValidator(new QIntValidator(1, 65535, this));
+    m_burstSizeLineEdit->setValidator(new QIntValidator(1, 512, this));
     m_burstSizeLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_copiesLineEdit = new QLineEdit();

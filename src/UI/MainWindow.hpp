@@ -96,6 +96,9 @@ public slots:
     void onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS, const int64_t &time);
     void onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies);
 
+    void onWarning(const std::string &message);
+    void onError(const std::string &message);
+
 private:
     void setupUi();
     void setupConnections();
@@ -121,6 +124,9 @@ private:
     BpsUnit m_currentBpsUnit = BpsUnit::BPS;
     enum class BPSUnit { BPS, KBPS, MBPS, GBPS };
     BPSUnit m_currentBPSUnit = BPSUnit::BPS;
+
+    std::string m_lastWarningMessage;
+    std::string m_lastErrorMessage;
 
     // UI elements
     // Tabs

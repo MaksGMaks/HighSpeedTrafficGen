@@ -71,6 +71,8 @@ void Generator::pfringSend() {
     pfring* ring = pfring_open(m_params.interfaceName.c_str(), 1500 /* snaplen */, PF_RING_PROMISC);
     if (!ring) {
         std::cerr << "Error opening PF_RING on interface: " << m_params.interfaceName << std::endl;
+        emit sendError("Error opening PF_RING on interface: " + m_params.interfaceName);
+        emit finished();
         return;
     }
 
@@ -80,6 +82,8 @@ void Generator::pfringSend() {
     if (pfring_enable_ring(ring) != 0) {
         std::cerr << "Failed to enable PF_RING." << std::endl;
         pfring_close(ring);
+        emit sendError("Failed to enable PF_RING on interface: " + m_params.interfaceName);
+        emit finished();
         return;
     }
     // Preset packet
@@ -109,6 +113,7 @@ void Generator::pfringSend() {
         int rc = pfring_send(ring, (char*)packet.data(), packet.size(), 0 /* flush = false */);
         if (rc < 0) {
             std::cerr << "PF_RING send error: " << rc << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+            emit sendWarning("PF_RING send error: " + std::string(strerror(errno)));
         } else {
             totalSend += rc;
         }
@@ -155,6 +160,8 @@ void Generator::pfringSendFile() {
     pfring* ring = pfring_open(m_params.interfaceName.c_str(), 1500 /* snaplen */, PF_RING_PROMISC);
     if (!ring) {
         std::cerr << "Error opening PF_RING on interface: " << m_params.interfaceName << std::endl;
+        emit sendError("Error opening PF_RING on interface: " + m_params.interfaceName);
+        emit finished();
         return;
     }
 
@@ -164,12 +171,17 @@ void Generator::pfringSendFile() {
     if (pfring_enable_ring(ring) != 0) {
         std::cerr << "Failed to enable PF_RING." << std::endl;
         pfring_close(ring);
+        emit sendError("Failed to enable PF_RING on interface: " + m_params.interfaceName);
+        emit finished();
         return;
     }
     // Preset packet
     std::ifstream file(m_params.filePath, std::ios::binary);
     if (!file) {
         std::cerr << "Failed to open file: " << m_params.filePath << std::endl;
+        pfring_close(ring);
+        emit sendError("Failed to open file: " + m_params.filePath);
+        emit finished();
         return;
     }
     file.seekg(0, std::ios::end);
@@ -178,6 +190,9 @@ void Generator::pfringSendFile() {
     std::vector<char> fileData(fileSize);
     if (!file.read((fileData.data()), fileSize)) {
         std::cerr << "Failed to read file." << std::endl;
+        pfring_close(ring);
+        emit sendError("Failed to read file: " + m_params.filePath);
+        emit finished();
         return;
     }
     std::vector<uint8_t> packet(fileData.begin(), fileData.end());
@@ -211,6 +226,7 @@ void Generator::pfringSendFile() {
         int rc = pfring_send(ring, (char*)(packet.data() + offset), m_params.packSize, 0 /* flush = false */);
         if (rc < 0) {
             std::cerr << "PF_RING send error: " << rc << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+            emit sendWarning("PF_RING send error: " + std::string(strerror(errno)));
         } else {
             totalSend += rc;
         }
@@ -261,6 +277,7 @@ void Generator::pfringZCSend() {
     int mtu = get_interface_mtu(m_params.interfaceName);
     if(m_params.packSize > mtu) {
         std::cerr << "Packet size is larger than MTU" << std::endl;
+        emit sendError("Packet size is larger than MTU");
         emit finished();
         return;
     }
@@ -270,6 +287,7 @@ void Generator::pfringZCSend() {
         0, mtu + 64, 0, 16384, -1, nullptr, 0);
     if (!cluster) {
         std::cerr << "Failed to create ZC cluster\n";
+        emit sendError("Failed to create ZC cluster");
         emit finished();
         return;
     }
@@ -280,6 +298,7 @@ void Generator::pfringZCSend() {
     if (!tx_queue) {
         std::cerr << "Failed to open TX device\n";
         pfring_zc_destroy_cluster(cluster);
+        emit sendError("Failed to open TX device");
         emit finished();
         return;
     }
@@ -292,6 +311,12 @@ void Generator::pfringZCSend() {
         burst[i] = pfring_zc_get_packet_handle(cluster);
         if (!burst[i]) {
             std::cerr << "Failed to allocate packet handle\n";
+            for (size_t j = 0; j < i; ++j) {
+                pfring_zc_release_packet_handle(cluster, burst[j]);
+            }
+            pfring_zc_close_device(tx_queue);
+            pfring_zc_destroy_cluster(cluster);
+            emit sendError("Failed to allocate packet handle");
             emit finished();
             return;
         }
@@ -324,7 +349,8 @@ void Generator::pfringZCSend() {
         int sent = pfring_zc_send_pkt_burst(tx_queue, burst.data(), burst.size(), 0); // 0 = do NOT auto free
         if (sent <= 0) {
             std::cerr << "PF_RING ZC send error: " << sent
-                    << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+                    << " (errno=" << errno << ": " << strerror(errno) << ")\n";\
+            emit sendWarning("PF_RING ZC send error: " + std::string(strerror(errno)));
         }
         // END SEND
 
@@ -372,6 +398,7 @@ void Generator::pfringZCSendFile() {
     int mtu = get_interface_mtu(m_params.interfaceName);
     if(m_params.packSize > mtu) {
         std::cerr << "Packet size is larger than MTU" << std::endl;
+        emit sendError("Packet size is larger than MTU");
         emit finished();
         return;
     }
@@ -381,6 +408,7 @@ void Generator::pfringZCSendFile() {
         0, mtu + 64, 0, 16384, -1, nullptr, 0);
     if (!cluster) {
         std::cerr << "Failed to create ZC cluster\n";
+        emit sendError("Failed to create ZC cluster");
         emit finished();
         return;
     }
@@ -391,8 +419,8 @@ void Generator::pfringZCSendFile() {
     if (!tx_queue) {
         std::cerr << "Failed to open TX device\n";
         pfring_zc_destroy_cluster(cluster);
+        emit sendError("Failed to open TX device");
         emit finished();
-        return;
     }
 
     // Allocate burst of packet buffers
@@ -402,6 +430,10 @@ void Generator::pfringZCSendFile() {
     std::ifstream file(m_params.filePath, std::ios::binary);
     if (!file) {
         std::cerr << "Failed to open file: " << m_params.filePath << std::endl;
+        pfring_zc_close_device(tx_queue);
+        pfring_zc_destroy_cluster(cluster);
+        emit sendError("Failed to open file: " + m_params.filePath);
+        emit finished();
         return;
     }
     file.seekg(0, std::ios::end);
@@ -410,6 +442,10 @@ void Generator::pfringZCSendFile() {
     std::vector<char> fileData(fileSize);
     if (!file.read((fileData.data()), fileSize)) {
         std::cerr << "Failed to read file." << std::endl;
+        pfring_zc_close_device(tx_queue);
+        pfring_zc_destroy_cluster(cluster);
+        emit sendError("Failed to read file.");
+        emit finished();
         return;
     }
     std::vector<uint8_t> packet(fileData.begin(), fileData.end());
@@ -423,8 +459,13 @@ void Generator::pfringZCSendFile() {
         burst[i] = pfring_zc_get_packet_handle(cluster);
         if (!burst[i]) {
             std::cerr << "Failed to allocate packet handle\n";
+            for (size_t j = 0; j < i; ++j) {
+                pfring_zc_release_packet_handle(cluster, burst[j]);
+            }
+            pfring_zc_close_device(tx_queue);
+            pfring_zc_destroy_cluster(cluster);
+            emit sendError("Failed to allocate packet handle");
             emit finished();
-            return;
         }
         memcpy(pfring_zc_pkt_buff_data(burst[i], tx_queue), packet.data() + offset, m_params.packSize);
         burst[i]->len = m_params.packSize;
@@ -461,6 +502,8 @@ void Generator::pfringZCSendFile() {
         if (sent <= 0) {
             std::cerr << "PF_RING ZC send error: " << sent
                     << " (errno=" << errno << ": " << strerror(errno) << ")\n";
+            emit sendWarning("PF_RING ZC send error: " + std::to_string(sent) 
+                + " (errno=" + std::to_string(errno) + ": " + strerror(errno) + ")");
         }
         // END SEND
 
@@ -508,6 +551,7 @@ void Generator::dpdkSend() {
     uint16_t port_id;
     if (rte_eth_dev_get_port_by_name(m_params.interfaceName.c_str(), &port_id) != 0) {
         std::cerr << "DPDK: Failed to get port for device " << m_params.interfaceName << std::endl;
+        emit sendError("DPDK: Failed to get port for device " + m_params.interfaceName);
         emit finished();
         return;
     }
@@ -526,6 +570,7 @@ void Generator::dpdkSend() {
         
         if (!mbuf_pool) {
             std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+            emit sendError("DPDK: Failed to create mbuf pool: " + std::string(rte_strerror(rte_errno)));
             emit finished();
             return;
         }
@@ -536,16 +581,19 @@ void Generator::dpdkSend() {
     port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
     if (rte_eth_dev_configure(port_id, 0, 1, &port_conf) < 0) {
         std::cerr << "DPDK: Failed to configure port" << std::endl;
+        emit sendError("DPDK: Failed to configure port " + std::to_string(port_id));
         emit finished();
         return;
     }
     if (rte_eth_tx_queue_setup(port_id, queue_id, nb_txd, rte_eth_dev_socket_id(port_id), nullptr) < 0) {
         std::cerr << "DPDK: Failed to setup TX queue" << std::endl;
+        emit sendError("DPDK: Failed to setup TX queue for port " + std::to_string(port_id));
         emit finished();
         return;
     }
     if (rte_eth_dev_start(port_id) < 0) {
         std::cerr << "DPDK: Failed to start port" << std::endl;
+        emit sendError("DPDK: Failed to start port " + std::to_string(port_id));
         emit finished();
         return;
     }
@@ -557,6 +605,7 @@ void Generator::dpdkSend() {
         rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
         if (!mbuf) {
             std::cerr << "DPDK: Failed to allocate mbuf\n";
+            emit sendWarning("DPDK: Failed to allocate mbuf");
             burst.resize(i); // Only send what we have
             break;
         }
@@ -592,6 +641,7 @@ void Generator::dpdkSend() {
         uint16_t sent = rte_eth_tx_burst(port_id, queue_id, burst.data(), burst.size());
         if (sent < burst.size()) {
             std::cerr << "DPDK: Failed to send all packets. Sent: " << sent << std::endl;
+            emit sendWarning("DPDK: Failed to send all packets. Sent: " + std::to_string(sent));
         }
         // END SEND
 
@@ -639,6 +689,7 @@ void Generator::dpdkSendFile() {
     uint16_t port_id;
     if (rte_eth_dev_get_port_by_name(m_params.interfaceName.c_str(), &port_id) != 0) {
         std::cerr << "DPDK: Failed to get port for device " << m_params.interfaceName << std::endl;
+        emit sendError("DPDK: Failed to get port for device " + m_params.interfaceName);
         emit finished();
         return;
     }
@@ -657,6 +708,7 @@ void Generator::dpdkSendFile() {
         
         if (!mbuf_pool) {
             std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+            emit sendError("DPDK: Failed to create mbuf pool: " + std::string(rte_strerror(rte_errno)));
             emit finished();
             return;
         }
@@ -667,16 +719,19 @@ void Generator::dpdkSendFile() {
     port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;
     if (rte_eth_dev_configure(port_id, 0, 1, &port_conf) < 0) {
         std::cerr << "DPDK: Failed to configure port" << std::endl;
+        emit sendError("DPDK: Failed to configure port " + std::to_string(port_id));
         emit finished();
         return;
     }
     if (rte_eth_tx_queue_setup(port_id, queue_id, nb_txd, rte_eth_dev_socket_id(port_id), nullptr) < 0) {
         std::cerr << "DPDK: Failed to setup TX queue" << std::endl;
+        emit sendError("DPDK: Failed to setup TX queue for port " + std::to_string(port_id));
         emit finished();
         return;
     }
     if (rte_eth_dev_start(port_id) < 0) {
         std::cerr << "DPDK: Failed to start port" << std::endl;
+        emit sendError("DPDK: Failed to start port " + std::to_string(port_id));
         emit finished();
         return;
     }
@@ -688,6 +743,9 @@ void Generator::dpdkSendFile() {
     std::ifstream file(m_params.filePath, std::ios::binary);
     if (!file) {
         std::cerr << "Failed to open file: " << m_params.filePath << std::endl;
+        rte_eth_dev_stop(port_id);
+        emit sendError("Failed to open file: " + m_params.filePath);
+        emit finished();
         return;
     }
     file.seekg(0, std::ios::end);
@@ -696,6 +754,9 @@ void Generator::dpdkSendFile() {
     std::vector<char> fileData(fileSize);
     if (!file.read((fileData.data()), fileSize)) {
         std::cerr << "Failed to read file." << std::endl;
+        rte_eth_dev_stop(port_id);
+        emit sendError("Failed to read file: " + m_params.filePath);
+        emit finished();
         return;
     }
     std::vector<uint8_t> packet(fileData.begin(), fileData.end());
@@ -708,6 +769,7 @@ void Generator::dpdkSendFile() {
         rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
         if (!mbuf) {
             std::cerr << "DPDK: Failed to allocate mbuf\n";
+            emit sendWarning("DPDK: Failed to allocate mbuf");
             burst.resize(i); // Only send what we have
             break;
         }
@@ -748,6 +810,7 @@ void Generator::dpdkSendFile() {
         uint16_t sent = rte_eth_tx_burst(port_id, queue_id, burst.data(), burst.size());
         if (sent < burst.size()) {
             std::cerr << "DPDK: Failed to send all packets. Sent: " << sent << std::endl;
+            emit sendWarning("DPDK: Failed to send all packets. Sent: " + std::to_string(sent));
         }
         // END SEND
 
