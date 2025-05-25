@@ -28,7 +28,9 @@ public slots:
 
 signals:
     void finished();
-    
+    void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime
+                    , const uint64_t &packetSize, const uint64_t &burstSize); 
+
 private:
     void pfringSend();
     void pfringZCSend();

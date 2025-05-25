@@ -1,7 +1,7 @@
 #include "HelpPage.hpp"
 
 HelpPage::HelpPage(QWidget *parent)
-    : QMainWindow(parent), mainLayout(new QVBoxLayout(this)), helpTextBrowser(new QTextBrowser(this)) {
+: QMainWindow(parent), mainLayout(new QVBoxLayout(this)), helpTextBrowser(new QTextBrowser(this)) {
     setupUi();
     loadHelpContent();
 }

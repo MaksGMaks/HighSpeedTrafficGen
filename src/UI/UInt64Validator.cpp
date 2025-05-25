@@ -2,14 +2,14 @@
 #include <QRegularExpression>
 
 UInt64Validator::UInt64Validator(QObject *parent)
-    : QValidator(parent),
-      m_bottom(0),
-      m_top(std::numeric_limits<quint64>::max()) {}
+: QValidator(parent)
+, m_bottom(0)
+, m_top(std::numeric_limits<quint64>::max()) {}
 
 UInt64Validator::UInt64Validator(quint64 bottom, quint64 top, QObject *parent)
-    : QValidator(parent),
-      m_bottom(bottom),
-      m_top(top) {}
+: QValidator(parent)
+, m_bottom(bottom)
+, m_top(top) {}
 
 void UInt64Validator::setBottom(quint64 bottom) {
     m_bottom = bottom;

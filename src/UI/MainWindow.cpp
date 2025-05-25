@@ -1,9 +1,8 @@
 #include "MainWindow.hpp"
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str())
-    {
+: QMainWindow(parent)
+, m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str()) {
     std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
     setupUtilitiesThread();
     setupUi();
@@ -30,6 +29,7 @@ void MainWindow::onStartButtonClicked() {
             m_pauseButton->setFlat(false);
             m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
         }
+        m_parametersGroupBox->setFocusPolicy(Qt::StrongFocus);
         emit stopGenerator();
     } else {
         if(m_prefferedSpeedLineEdit->text().isEmpty() || m_packetSizeLineEdit->text().isEmpty() ||
@@ -61,7 +61,9 @@ void MainWindow::onStartButtonClicked() {
         genParams params;
         params.interfaceName = m_interfaceComboBox->currentText().toStdString();
         params.mode = m_modeComboBox->currentData().toUInt();
-        params.time = m_timeLineEdit->time().msecsSinceStartOfDay();
+        params.time = m_timeLineEdit->time().hour() * 3600 +
+                      m_timeLineEdit->time().minute() * 60 +
+                      m_timeLineEdit->time().second();
         params.speed = m_prefferedSpeedLineEdit->text().toULongLong();
         params.packSize = m_packetSizeLineEdit->text().toUInt();
         params.burstSize = m_burstSizeLineEdit->text().toUInt();
@@ -69,9 +71,19 @@ void MainWindow::onStartButtonClicked() {
         params.fileSend = m_fileSendButton->isFlat();
         params.filePath = m_pathToFileLineEdit->text().toStdString();
         params.totalSend = m_sentLineEdit->text().toULongLong();
-        params.packetPattern = m_packetPatternLineEdit->text().toStdString();
+        params.packetPattern =  m_packetPatternLineEdit->text().toUInt(nullptr, 16);
 
         m_pauseButton->setEnabled(true);
+        m_parametersGroupBox->setFocusPolicy(Qt::NoFocus);
+
+        m_ppsSeries->clear();
+        m_bpsSeries->clear();
+        m_BPSSeries->clear();
+        m_packetLossSeries->clear();
+        m_totalCopiesLineEdit->setText("0");
+        m_totalSendLineEdit->setText("0");
+        m_speedLineEdit->setText("0");
+
         emit startGenerator(params);
     }
 }
@@ -266,6 +278,51 @@ void MainWindow::onApplyStyleSheet(const QString &styleSheet) {
     qApp->setStyleSheet(styleSheet);
 }
 
+void MainWindow::onGeneratorFinished() {
+    std::cout << "[MainWindow::onGeneratorFinished] Generator finished" << std::endl;
+    m_startButton->setFlat(false);
+    m_startButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPlay));
+    m_pauseButton->setEnabled(false);
+    m_pauseButton->setFlat(false);
+    m_pauseButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_MediaPause));
+    m_parametersGroupBox->setFocusPolicy(Qt::StrongFocus);
+}
+
+void MainWindow::onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS
+, const uint64_t &packetLoss, const uint64_t &totalTime) {
+
+    
+    m_ppsSeries->append(totalTime, pps);
+    m_bpsSeries->append(totalTime, bps);
+    m_BPSSeries->append(totalTime, BPS);
+    m_packetLossSeries->append(totalTime, packetLoss);
+    m_ppsChartView->update();
+    m_bpsChartView->update();
+    m_BPSChartView->update();
+    m_packetLossChartView->update();
+    if(BPS >= (1024 * 1024 * 1024)) {
+        m_speedUnitLabel->setText("GB/s");
+        m_speedLineEdit->setText(QString::number((long double)BPS / (1024 * 1024 * 1024), 'f', 2));
+    } else if(BPS >= (1024 * 1024)) {
+        m_speedUnitLabel->setText("MB/s");
+        m_speedLineEdit->setText(QString::number((long double)BPS / (1024 * 1024), 'f', 2));
+    } else if(BPS >= (1024)) {
+        m_speedUnitLabel->setText("KB/s");
+        m_speedLineEdit->setText(QString::number((long double)BPS / 1024, 'f', 2));
+    } else {
+        m_speedUnitLabel->setText("B/s");
+        m_speedLineEdit->setText(QString::number(BPS, 'f', 2));
+    }
+    
+    // 10 485 760 | 10 526 654 464
+    
+}
+
+void MainWindow::onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies) {
+    m_totalSendLineEdit->setText(QString::number(totalSend));
+    m_totalCopiesLineEdit->setText(QString::number(totalCopies));
+}
+
 void MainWindow::setupUtilitiesThread() {
     std::cout << "[MainWindow::setupUtilitiesThread] Setting up utilities thread" << std::endl;
     m_utilitiesThread = new QThread(this);
@@ -313,6 +370,11 @@ void MainWindow::setupConnections() {
     connect(this, &MainWindow::pauseGenerator, m_generator, &Generator::doPause);
     connect(this, &MainWindow::resumeGenerator, m_generator, &Generator::doResume);
     connect(this, &MainWindow::stopGenerator, m_generator, &Generator::doStop);
+    connect(m_generator, &Generator::sendProgress, m_uiUpdater, &UIUpdater::onSendProgress);
+    connect(m_generator, &Generator::finished, this, &MainWindow::onGeneratorFinished);
+
+    connect(m_uiUpdater, &UIUpdater::updateGraph, this, &MainWindow::onUpdateGraph);
+    connect(m_uiUpdater, &UIUpdater::updateDynamicVariables, this, &MainWindow::onUpdateDynamicVariables);
 }
 
 void MainWindow::setupUi() {
@@ -472,11 +534,15 @@ void MainWindow::setupUi() {
     m_sentLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_packetPatternLineEdit = new QLineEdit();
+    QRegularExpression hexRegex("^[0-9A-Fa-f]*$");
+    QValidator *validator = new QRegularExpressionValidator(hexRegex, m_packetPatternLineEdit);
+    m_packetPatternLineEdit->setValidator(validator);
     m_packetPatternLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_packetPatternLineEdit->setText("AA");
     m_packetPatternLineEdit->setMaxLength(2);
     m_packetPatternLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
+
     m_pathToFileLineEdit = new QLineEdit();
     m_pathToFileLineEdit->setMinimumSize(2 * MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_pathToFileLineEdit->setPlaceholderText("Path to file");
@@ -512,28 +578,44 @@ void MainWindow::setupUi() {
     m_totalCopiesLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
     // Initialize charts
+    m_ppsSeries = new QLineSeries();
     m_ppsChart = new QChart();
     m_ppsChart->setTitle(tr("Packets per second"));
     m_ppsChart->setAnimationOptions(QChart::AllAnimations);
     m_ppsChart->setTheme(QChart::ChartThemeDark);
+    m_ppsChart->legend()->hide();
+    m_ppsChart->addSeries(m_ppsSeries);
+    m_ppsChart->createDefaultAxes();
     m_ppsChartView = new QChartView(m_ppsChart);
     
+    m_bpsSeries = new QLineSeries();
     m_bpsChart = new QChart();
     m_bpsChart->setTitle(tr("Bits per second"));
     m_bpsChart->setAnimationOptions(QChart::AllAnimations);
     m_bpsChart->setTheme(QChart::ChartThemeDark);
+    m_bpsChart->legend()->hide();
+    m_bpsChart->addSeries(m_bpsSeries);
+    m_bpsChart->createDefaultAxes();
     m_bpsChartView = new QChartView(m_bpsChart);
     
+    m_BPSSeries = new QLineSeries();
     m_BPSChart = new QChart();
     m_BPSChart->setTitle(tr("Bytes per second"));
     m_BPSChart->setAnimationOptions(QChart::AllAnimations);
     m_BPSChart->setTheme(QChart::ChartThemeDark);
+    m_BPSChart->legend()->hide();
+    m_BPSChart->addSeries(m_BPSSeries);
+    m_BPSChart->createDefaultAxes();
     m_BPSChartView = new QChartView(m_BPSChart);
     
+    m_packetLossSeries = new QLineSeries();
     m_packetLossChart = new QChart();
     m_packetLossChart->setTitle(tr("Packet Loss"));
     m_packetLossChart->setAnimationOptions(QChart::AllAnimations);
     m_packetLossChart->setTheme(QChart::ChartThemeDark);
+    m_packetLossChart->legend()->hide();
+    m_packetLossChart->addSeries(m_packetLossSeries);
+    m_packetLossChart->createDefaultAxes();
     m_packetLossChartView = new QChartView(m_packetLossChart);
 
     // Initialize tab widget

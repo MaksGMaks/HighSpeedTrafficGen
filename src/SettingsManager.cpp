@@ -5,7 +5,7 @@
 #include <QDebug>
 
 SettingsManager::SettingsManager(const QString &filePath)
-    : m_filePath(filePath) {}
+: m_filePath(filePath) {}
 
 bool SettingsManager::load() {
     QFile file(m_filePath);

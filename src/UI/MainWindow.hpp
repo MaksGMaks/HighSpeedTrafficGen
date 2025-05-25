@@ -11,6 +11,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLineSeries>
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
@@ -82,9 +83,14 @@ public slots:
 
     void onThemeChanged(const QString &theme);
     void onLanguageChanged(const QString &language);
+
     // Slot functions for handling outer events
     void onApplyStyleSheet(const QString &styleSheet);
-    
+    void onGeneratorFinished();
+
+    void onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const uint64_t &BPS
+                       , const uint64_t &packetLoss, const uint64_t &totalTime);
+    void onUpdateDynamicVariables(const uint64_t &totalSend, const uint64_t &totalCopies);
 
 private:
     void setupUi();
@@ -108,12 +114,16 @@ private:
     QTabWidget *m_tabWidget;
 
     // Charts
+    QLineSeries *m_ppsSeries;
     QChart *m_ppsChart;
     QChartView *m_ppsChartView;
+    QLineSeries *m_bpsSeries;
     QChart *m_bpsChart;
     QChartView *m_bpsChartView;
+    QLineSeries *m_BPSSeries;
     QChart *m_BPSChart;
     QChartView *m_BPSChartView;
+    QLineSeries *m_packetLossSeries;
     QChart *m_packetLossChart;
     QChartView *m_packetLossChartView;
 
