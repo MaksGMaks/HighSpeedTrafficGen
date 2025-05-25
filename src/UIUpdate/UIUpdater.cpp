@@ -14,7 +14,6 @@ void UIUpdater::onSendProgress(const uint64_t &totalSend, const uint64_t &totalC
         elapsedTime = (startTime.tv_sec - m_prevTime);
     }
     if(elapsedTime >= 1) {
-        std::cout << "[UIUpdater::onSendProgress] Elapsed time: " << elapsedTime << " seconds" << std::endl;
         uint64_t speed = ((totalSend - m_prevTotalSend) / elapsedTime);
         m_prevTime = startTime.tv_sec;
         m_prevTotalSend = totalSend;
@@ -36,7 +35,6 @@ void UIUpdater::onSendHalfProgress(const uint64_t &totalCopies, const struct tim
         elapsedTime = (startTime.tv_sec - m_prevTime);
     }
     if(elapsedTime >= 1) {
-        std::cout << "[UIUpdater::onSendProgress] Elapsed time: " << elapsedTime << " seconds" << std::endl;
         readDynamicVariables(interfaceName);
         uint64_t speed = ((m_fileBytes - m_prevTotalSend) / elapsedTime);
         m_prevTime = startTime.tv_sec;

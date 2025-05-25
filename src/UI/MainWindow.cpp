@@ -298,33 +298,27 @@ void MainWindow::onUpdateGraph(const uint64_t &pps, const uint64_t &bps, const u
         m_timeLineEdit->setTime(currentTime.addSecs(-1));
     }
     m_ppsLineEdit->setText(QString::number(pps));
-    m_bpsSeries->append(m_totalTime, bps);
-    m_BPSSeries->append(m_totalTime, BPS);
-
-// Adjust X-axis (time)
-if (m_totalTime > 10) {
-    m_bpsAxisX->setRange(m_totalTime - 10, m_totalTime);
-    m_BPSAxisX->setRange(m_totalTime - 10, m_totalTime);
-}
-m_totalTime += 1;
-
-// --- Detect and apply unit for BPS (bytes/sec) chart
-    uint64_t accumulatedBPS = BPS;
+    // Determine BPS unit
+    BPSUnit newUnitBPS = BPSUnit::BPS;
     QString unitLabel;
-    long double displayValue = accumulatedBPS;
+    long double BPSScale = 1.0;
     QString axisLabelFormat;
-    if (accumulatedBPS >= (1024ULL * 1024 * 1024)) {
+
+    if (BPS >= (1024ULL * 1024 * 1024)) {
         axisLabelFormat = "%.2f GB/s";
         unitLabel = "GB/s";
-        displayValue = accumulatedBPS / (long double)(1024ULL * 1024 * 1024);
-    } else if (accumulatedBPS >= (1024ULL * 1024)) {
+        BPSScale = 1024.0 * 1024 * 1024;
+        newUnitBPS = BPSUnit::GBPS;
+    } else if (BPS >= (1024ULL * 1024)) {
         axisLabelFormat = "%.2f MB/s";
         unitLabel = "MB/s";
-        displayValue = accumulatedBPS / (long double)(1024 * 1024);
-    } else if (accumulatedBPS >= 1024) {
+        BPSScale = 1024.0 * 1024;
+        newUnitBPS = BPSUnit::MBPS;
+    } else if (BPS >= 1024) {
         axisLabelFormat = "%.2f KB/s";
         unitLabel = "KB/s";
-        displayValue = accumulatedBPS / 1024.0;
+        BPSScale = 1024.0;
+        newUnitBPS = BPSUnit::KBPS;
     } else {
         axisLabelFormat = "%d B/s";
         unitLabel = "B/s";
@@ -332,12 +326,33 @@ m_totalTime += 1;
 
     m_BPSAxisY->setLabelFormat(axisLabelFormat);
     m_speedUnitLabel->setText(unitLabel);
-    m_speedLineEdit->setText(QString::number(displayValue, 'f', 2));
+    m_speedLineEdit->setText(QString::number(BPS / BPSScale, 'f', 2));
 
-    // --- Detect and apply unit for bps chart
+    // Update BPS unit and rescale series if changed
+    if (m_currentBPSUnit != newUnitBPS) {
+        double oldScale = 1.0;
+        switch (m_currentBPSUnit) {
+            case BPSUnit::BPS:  oldScale = 1.0; break;
+            case BPSUnit::KBPS: oldScale = 1024.0; break;
+            case BPSUnit::MBPS: oldScale = 1024.0 * 1024; break;
+            case BPSUnit::GBPS: oldScale = 1024.0 * 1024 * 1024; break;
+        }
+
+        for (int i = 0; i < m_BPSSeries->count(); ++i) {
+            QPointF pt = m_BPSSeries->at(i);
+            double valRaw = pt.y() * oldScale;
+            pt.setY(valRaw / BPSScale);
+            m_BPSSeries->replace(i, pt);
+        }
+
+        m_currentBPSUnit = newUnitBPS;
+    }
+
+    // Determine bps unit
     BpsUnit newUnit = BpsUnit::BPS;
     long double bpsScale = 1.0;
     QString bpsFormat = "%d bps";
+
     if (bps >= (1000ULL * 1000 * 1000)) {
         newUnit = BpsUnit::GBPS;
         bpsScale = 1000.0 * 1000 * 1000;
@@ -354,7 +369,7 @@ m_totalTime += 1;
 
     m_bpsAxisY->setLabelFormat(bpsFormat);
 
-    // --- Scale previous data if unit changed
+    // Update bps unit and rescale if changed
     if (m_currentBpsUnit != newUnit) {
         double oldScale = 1.0;
         switch (m_currentBpsUnit) {
@@ -366,19 +381,36 @@ m_totalTime += 1;
 
         for (int i = 0; i < m_bpsSeries->count(); ++i) {
             QPointF pt = m_bpsSeries->at(i);
-            double bpsVal = pt.y() * oldScale;       // convert to raw bps
-            pt.setY(bpsVal / bpsScale);              // convert to new scale
+            double valRaw = pt.y() * oldScale;
+            pt.setY(valRaw / bpsScale);
             m_bpsSeries->replace(i, pt);
         }
 
         m_currentBpsUnit = newUnit;
     }
 
-    // --- Adjust Y axis ranges
-    // m_bpsAxisY->setRange(0, niceCeil(std::max(bps / bpsScale, (long double)m_bpsAxisY->max())));
-    // m_BPSAxisY->setRange(0, niceBPSCeil);
+    // Append NEW values (already scaled)
+    m_bpsSeries->append(m_totalTime, bps / bpsScale);
+    m_BPSSeries->append(m_totalTime, BPS / BPSScale);
 
-    // --- Refresh UI
+    // Adjust X-axis
+    if (m_totalTime > 10) {
+        m_bpsAxisX->setRange(m_totalTime - 10, m_totalTime);
+        m_BPSAxisX->setRange(m_totalTime - 10, m_totalTime);
+    }
+    m_totalTime += 1;
+
+    // Adjust Y-axis range using clean rounded value
+    auto roundUp = [](double val) -> double {
+        double raw = val * 1.5;
+        double step = std::pow(10, std::floor(std::log10(raw)));
+        return std::ceil(raw / step) * step;
+    };
+
+    m_bpsAxisY->setRange(0, roundUp(bps / bpsScale));
+    m_BPSAxisY->setRange(0, roundUp(BPS / BPSScale));
+
+    // Refresh chart views
     m_bpsChartView->update();
     m_BPSChartView->update();
 }

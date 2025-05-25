@@ -120,7 +120,8 @@ void Generator::pfringSend() {
         }
         emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0)  
-            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
@@ -226,7 +227,8 @@ void Generator::pfringSendFile() {
 
         emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0)  
-            || (totalCopies == m_params.copies && m_params.copies != 0) || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
@@ -331,7 +333,8 @@ void Generator::pfringZCSend() {
         totalSend += packet.size() * sent;
         emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0)  
-            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
@@ -466,7 +469,8 @@ void Generator::pfringZCSendFile() {
         totalSend += packet.size() * sent;
         emit sendHalfProgress(totalCopies, currTime, m_params.interfaceName);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0) 
-            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
@@ -596,7 +600,8 @@ void Generator::dpdkSend() {
         totalSend += packet.size() * sent;
         emit sendProgress(totalSend, totalCopies, currTime);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0)  
-            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
@@ -751,7 +756,8 @@ void Generator::dpdkSendFile() {
         totalSend += packet.size() * sent;
         emit sendProgress(totalSend, totalCopies, currTime);
         if(((currTime.tv_sec - startTime.tv_sec) >= m_params.time && m_params.time != 0)  
-            || totalCopies == m_params.copies || totalSend == m_params.totalSend )
+            || (totalCopies == m_params.copies && m_params.copies != 0) 
+            || (totalSend == m_params.totalSend && m_params.totalSend != 0))
             break;
         
         if(m_params.speed != 0) {
