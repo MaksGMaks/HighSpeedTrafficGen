@@ -513,12 +513,18 @@ void Generator::dpdkSend() {
     const uint32_t nb_mbufs = 8192;
 
     // Create mempool
-    rte_mempool* mbuf_pool = rte_pktmbuf_pool_create(
-        "MBUF_POOL", nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+    std::string pool_name = "MBUF_POOL_" + std::to_string(m_params.packSize);
+    rte_mempool* mbuf_pool = rte_mempool_lookup(pool_name.c_str());
+
     if (!mbuf_pool) {
-        std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
-        emit finished();
-        return;
+        mbuf_pool = rte_pktmbuf_pool_create(
+            pool_name.c_str(), nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+        
+        if (!mbuf_pool) {
+            std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+            emit finished();
+            return;
+        }
     }
 
     // Configure port
@@ -616,7 +622,6 @@ void Generator::dpdkSend() {
     }
     
     rte_eth_dev_stop(port_id);
-    rte_eth_dev_close(port_id);
     emit finished();
 } 
 
@@ -638,12 +643,18 @@ void Generator::dpdkSendFile() {
     const uint32_t nb_mbufs = 8192;
 
     // Create mempool
-    rte_mempool* mbuf_pool = rte_pktmbuf_pool_create(
-        "MBUF_POOL", nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+    std::string pool_name = "MBUF_POOL_" + std::to_string(m_params.packSize);
+    rte_mempool* mbuf_pool = rte_mempool_lookup(pool_name.c_str());
+
     if (!mbuf_pool) {
-        std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
-        emit finished();
-        return;
+        mbuf_pool = rte_pktmbuf_pool_create(
+            pool_name.c_str(), nb_mbufs, 256, 0, mbuf_size, rte_socket_id());
+        
+        if (!mbuf_pool) {
+            std::cerr << "DPDK: Failed to create mbuf pool: " << rte_strerror(rte_errno) << std::endl;
+            emit finished();
+            return;
+        }
     }
 
     // Configure port
@@ -766,6 +777,5 @@ void Generator::dpdkSendFile() {
     }
     
     rte_eth_dev_stop(port_id);
-    rte_eth_dev_close(port_id);
     emit finished();
 }

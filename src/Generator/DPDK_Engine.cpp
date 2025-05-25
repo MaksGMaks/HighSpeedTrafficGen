@@ -1,6 +1,6 @@
 #include "DPDK_Engine.hpp"
 
-void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
+bool initialize_dpdk() {
     std::vector<char*> argv = {"detect", "--huge-dir=/mnt/huge"};
     //const char* argv[] = {"detect", "-c", "2", "--huge-dir=/mnt/huge"};
 
@@ -13,9 +13,23 @@ void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
 
     if (rte_eal_init(argc, const_cast<char**>(argv.data())) < 0) {
         std::cerr << "Failed to initialize DPDK EAL\n";
-        return;
+        return false;
     }
+    return true;
+}
 
+bool isHugepageMounted(const std::string& mountPoint) {
+    std::ifstream mounts("/proc/mounts");
+    std::string line;
+    while (std::getline(mounts, line)) {
+        if (line.find(mountPoint) != std::string::npos && line.find("hugetlbfs") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void checkDPDKSupport(std::vector<interfaceModes>& interfaces) {
     int nb_ports = rte_eth_dev_count_avail();
     for (int i = 0; i < nb_ports; i++) {
         rte_eth_dev_info dev_info;
@@ -35,15 +49,4 @@ void initialize_dpdk(std::vector<interfaceModes>& interfaces) {
             }
         }
     }
-}
-
-bool isHugepageMounted(const std::string& mountPoint) {
-    std::ifstream mounts("/proc/mounts");
-    std::string line;
-    while (std::getline(mounts, line)) {
-        if (line.find(mountPoint) != std::string::npos && line.find("hugetlbfs") != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
 }

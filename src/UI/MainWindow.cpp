@@ -4,6 +4,7 @@ MainWindow::MainWindow(QWidget *parent)
 : QMainWindow(parent)
 , m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str()) {
     std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
+    m_dpdkInitialized = initialize_dpdk();
     setupUtilitiesThread();
     setupUi();
     setupConnections();
@@ -173,7 +174,9 @@ void MainWindow::onRefreshInterfacesActionTriggered() {
     m_interfaces.clear();
     m_interfaceComboBox->clear();
     m_interfaces = findAllDevices();
-    initialize_dpdk(m_interfaces);
+    if(m_dpdkInitialized) {
+        checkDPDKSupport(m_interfaces);
+    }
     for(auto& dev : m_interfaces) {
         dev.pf_ring_zc_support = check_pfring_zc(dev.interfaceName);
         dev.pf_ring_standart_support = check_pfring_standard(dev.interfaceName);

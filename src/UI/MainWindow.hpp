@@ -109,6 +109,8 @@ private:
     Generator *m_generator;
     UIUpdater *m_uiUpdater;
 
+    bool m_dpdkInitialized;
+
     // UI elements
     // Tabs
     QTabWidget *m_tabWidget;
