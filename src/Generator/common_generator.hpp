@@ -23,6 +23,7 @@ struct interfaceModes {
     bool pf_ring_zc_support{};
     bool pf_ring_standart_support{};
 
+    interfaceModes() = default;
     interfaceModes(const std::string interfaceName_) {
         interfaceName = interfaceName_;
     }
@@ -43,6 +44,7 @@ struct genParams {
     uint64_t copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
     uint64_t totalSend{};               // Total size of generated information; if 0 - infinite sending
     uint8_t burstSize{};                // Size of burst for sending
+    uint8_t packetPattern{};        // Pattern for packet generation
 };
 
 std::vector<interfaceModes> findAllDevices();

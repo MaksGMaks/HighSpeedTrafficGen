@@ -28,6 +28,11 @@ public slots:
 
 signals:
     void finished();
+    void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime); 
+    void sendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime, const std::string &interfaceName);
+    void sendWarning(const std::string &message); // send warning message to UI
+    void sendError(const std::string &message);   // send error message to UI
+
 private:
     void pfringSend();
     void pfringZCSend();

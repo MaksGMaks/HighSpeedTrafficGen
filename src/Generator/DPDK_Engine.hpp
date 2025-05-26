@@ -13,5 +13,7 @@
 
 #include "common_generator.hpp"
 
-void initialize_dpdk(std::vector<interfaceModes>& interfaces);
+bool initialize_dpdk();
 bool isHugepageMounted(const std::string& mountPoint);
+
+void checkDPDKSupport(std::vector<interfaceModes>& interfaces);
