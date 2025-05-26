@@ -8,8 +8,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupUtilitiesThread();
     setupUi();
     setupConnections();
-    onRefreshInterfacesActionTriggered();
     setupSettings();
+    onRefreshInterfacesActionTriggered();
     m_utilitiesThread->start();
     m_totalTime = 0;
 }
@@ -45,8 +45,8 @@ void MainWindow::onStartButtonClicked() {
             QMessageBox::warning(this, tr("Input Error"), tr("Please select a file to send."));
             return;
         }
-        if(m_packetSizeLineEdit->text().toInt() < 10) {
-            QMessageBox::warning(this, tr("Input Error"), tr("Packet size must be greater than 10 bytes."));
+        if(m_packetSizeLineEdit->text().toInt() < 16) {
+            QMessageBox::warning(this, tr("Input Error"), tr("Packet size must be greater than 16 bytes."));
             return;
         }
         if(m_burstSizeLineEdit->text().toInt() < 1) {
@@ -268,7 +268,31 @@ void MainWindow::onThemeChanged(const QString &theme) {
 }
 
 void MainWindow::onLanguageChanged(const QString &language) {
-
+    std::cout << "[MainWindow::onLanguageChanged] Language changed to: " << language.toStdString() << std::endl;
+    if (language == "en") {
+        m_settingsManager.setLanguage("en");
+        QTranslator* translator = new QTranslator(this); // use 'this' for memory management
+        if (translator->load("Translations/TrafficGenerator_en.qm")) {
+            qApp->installTranslator(translator);
+        } else {
+            std::cerr << "Could not load translation for language: en" << std::endl;
+            delete translator;
+        }
+        translateUI();
+    } else if (language == "uk") {
+        m_settingsManager.setLanguage("uk");
+        QTranslator* translator = new QTranslator(this); // use 'this' for memory management
+        if (translator->load("Translations/TrafficGenerator_uk.qm")) {
+            qApp->installTranslator(translator);
+        } else {
+            std::cerr << "Could not load translation for language: uk" << std::endl;
+            delete translator;
+        }
+        translateUI();
+    }
+    m_settingsManager.save();
+    this->close();
+    this->show(); 
 }
 
 void MainWindow::onApplyStyleSheet(const QString &styleSheet) {
@@ -447,11 +471,20 @@ void MainWindow::setupSettings() {
     std::cout << "[MainWindow::setupSettings] Setting up settings manager" << std::endl;
     bool loaded = m_settingsManager.load();
     if (!loaded) {
-        m_settingsManager.setTheme("light"); // Default theme
-        m_settingsManager.setLanguage("en"); // Default language
+        m_settingsManager.setTheme("dark"); // Default theme
+        m_settingsManager.setLanguage("uk"); // Default language
         m_settingsManager.save();
     }
-
+    // Apply language from settings
+    QString lang = m_settingsManager.language(); // e.g., "uk", "en"
+    QTranslator* translator = new QTranslator(this); // use 'this' for memory management
+    if (translator->load("Translations/TrafficGenerator_" + lang + ".qm")) {
+        qApp->installTranslator(translator);
+    } else {
+        std::cerr << "Could not load translation for language: " << lang.toStdString() << std::endl;
+        delete translator;
+    }
+    translateUI();
     // Apply theme from settings
     emit onThemeChanged(m_settingsManager.theme());
 }
@@ -467,7 +500,7 @@ void MainWindow::setupConnections() {
     connect(m_saveBPSGraphAction, &QAction::triggered, this, &MainWindow::onSaveBPSGraphActionTriggered);
     connect(m_darkThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("dark"); });
     connect(m_lightThemeAction, &QAction::triggered, this, [this]() { onThemeChanged("light"); });
-    connect(m_uaLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("ua"); });
+    connect(m_uaLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("uk"); });
     connect(m_enLanguageAction, &QAction::triggered, this, [this]() { onLanguageChanged("en"); });
     //connect(m_aboutAction, &QAction::triggered, this, &MainWindow::onAboutActionTriggered);
     connect(m_helpAction, &QAction::triggered, this, &MainWindow::onHelpActionTriggered);
@@ -486,12 +519,73 @@ void MainWindow::setupConnections() {
 
     connect(m_uiUpdater, &UIUpdater::updateGraph, this, &MainWindow::onUpdateGraph);
     connect(m_uiUpdater, &UIUpdater::updateDynamicVariables, this, &MainWindow::onUpdateDynamicVariables);
+
+    connect(m_generator, &Generator::sendWarning, this, &MainWindow::onWarning);
+    connect(m_generator, &Generator::sendError, this, &MainWindow::onError);
+}
+
+void MainWindow::translateUI() {
+    std::cout << "[MainWindow::translateUI] Translating UI" << std::endl;
+    setWindowTitle(tr("High Speed Traffic Generator"));
+    // Translate labels
+    m_interfaceLabel->setText(tr("Interface:"));
+    m_modeLabel->setText(tr("Mode:"));
+    m_prefferedSpeedLabel->setText(tr("Preffered Speed:"));
+    m_packetSizeLabel->setText(tr("Packet Size:"));
+    m_burstSizeLabel->setText(tr("Burst Size:"));
+    m_copiesLabel->setText(tr("Copies:"));
+    m_sentLabel->setText(tr("Sent:"));
+    m_packetPatternLabel->setText(tr("Packet Pattern:"));
+    m_timeLabel->setText(tr("Time:"));
+    m_speedLabel->setText(tr("Speed:"));
+    m_ppsLabel->setText(tr("PPS:"));
+    m_totalSendLabel->setText(tr("Total Sent:"));
+    m_totalCopiesLabel->setText(tr("Total Copies:"));
+
+    // Translate buttons
+    m_fileSendButton->setText(tr("Send File"));
+
+    // Translate line edits
+    m_pathToFileLineEdit->setPlaceholderText(tr("Path to file"));
+    
+    // Translate chart titles
+    m_bpsChart->setTitle(tr("Bits per second"));
+    m_BPSChart->setTitle(tr("Bytes per second"));
+    
+    // Translate tab widget
+    m_tabWidget->setTabText(0, tr("Bits per second"));
+    m_tabWidget->setTabText(1, tr("Bytes per second"));
+
+    // Translate group boxes
+    m_parametersGroupBox->setTitle(tr("Parameters"));
+    m_infoGroupBox->setTitle(tr("Info"));
+
+    // Translate actions
+    m_fileMenu->setTitle(tr("File"));
+    m_refreshInterfacesAction->setText(tr("Refresh Interfaces"));
+    m_savingsMenu->setTitle(tr("Save.."));
+    m_saveBpsGraphAction->setText(tr("Save bps Graph"));
+    m_saveBPSGraphAction->setText(tr("Save BPS Graph"));
+
+    m_settingsMenu->setTitle(tr("Settings"));
+    m_themeMenu->setTitle(tr("Theme"));
+    m_darkThemeAction->setText(tr("Dark"));
+    m_lightThemeAction->setText(tr("Light"));
+    m_languageMenu->setTitle(tr("Language"));
+    m_uaLanguageAction->setText("Українська");
+    m_enLanguageAction->setText("English");
+    
+    //m_aboutAction->setText(tr("About"));
+    m_helpAction->setText(tr("Help"));
+
+    m_helpPage->~HelpPage();
+    m_helpPage = new HelpPage(this);
 }
 
 void MainWindow::setupUi() {
     std::cout << "[MainWindow::setupUi] Setting up UI" << std::endl;
     // Set up the main window
-    setWindowTitle(tr("High Speed Traffic Generator"));
+    setWindowTitle("High Speed Traffic Generator");
     resize(1200, 800);
 
     // initialize labels
@@ -499,98 +593,98 @@ void MainWindow::setupUi() {
     font.setPointSize(18);
     font.setBold(true);
 
-    m_interfaceLabel = new QLabel(tr("Interface:"));
+    m_interfaceLabel = new QLabel("Interface:");
     m_interfaceLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_interfaceLabel->setAlignment(Qt::AlignCenter);
     m_interfaceLabel->setFont(font);
     m_interfaceLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_modeLabel = new QLabel(tr("Mode:"));
+    m_modeLabel = new QLabel("Mode:");
     m_modeLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_modeLabel->setAlignment(Qt::AlignCenter);
     m_modeLabel->setFont(font);
     m_modeLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_prefferedSpeedLabel = new QLabel(tr("Preffered Speed:"));
+    m_prefferedSpeedLabel = new QLabel("Preffered Speed:");
     m_prefferedSpeedLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_prefferedSpeedLabel->setAlignment(Qt::AlignCenter);
     m_prefferedSpeedLabel->setFont(font);
     m_prefferedSpeedLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_packetSizeLabel = new QLabel(tr("Packet Size:"));
+    m_packetSizeLabel = new QLabel("Packet Size:");
     m_packetSizeLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_packetSizeLabel->setAlignment(Qt::AlignCenter);
     m_packetSizeLabel->setFont(font);
     m_packetSizeLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_burstSizeLabel = new QLabel(tr("Burst Size:"));
+    m_burstSizeLabel = new QLabel("Burst Size:");
     m_burstSizeLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_burstSizeLabel->setAlignment(Qt::AlignCenter);
     m_burstSizeLabel->setFont(font);
     m_burstSizeLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_copiesLabel = new QLabel(tr("Copies:"));
+    m_copiesLabel = new QLabel("Copies:");
     m_copiesLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_copiesLabel->setAlignment(Qt::AlignCenter);
     m_copiesLabel->setFont(font);
     m_copiesLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_sentLabel = new QLabel(tr("Sent:"));
+    m_sentLabel = new QLabel("Sent:");
     m_sentLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_sentLabel->setAlignment(Qt::AlignCenter);
     m_sentLabel->setFont(font);
     m_sentLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_packetPatternLabel = new QLabel(tr("Packet Pattern:"));
+    m_packetPatternLabel = new QLabel("Packet Pattern:");
     m_packetPatternLabel->setMinimumSize(MINIMUM_PARAM_LABEL_WIDTH, MINIMUM_PARAM_LABEL_HEIGHT);
     m_packetPatternLabel->setAlignment(Qt::AlignCenter);
     m_packetPatternLabel->setFont(font);
     m_packetPatternLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    m_timeLabel = new QLabel(tr("Time:"));
+    m_timeLabel = new QLabel("Time:");
     m_timeLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
     m_timeLabel->setAlignment(Qt::AlignCenter);
     m_timeLabel->setFont(font);
     m_timeLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_speedLabel = new QLabel(tr("Speed:"));
+    m_speedLabel = new QLabel("Speed:");
     m_speedLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
     m_speedLabel->setAlignment(Qt::AlignCenter);
     m_speedLabel->setFont(font);
     m_speedLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    m_ppsLabel = new QLabel(tr("PPS:"));
+    m_ppsLabel = new QLabel("PPS:");
     m_ppsLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
     m_ppsLabel->setAlignment(Qt::AlignCenter);
     m_ppsLabel->setFont(font);
     m_ppsLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_totalSendLabel = new QLabel(tr("Total Sent:"));
+    m_totalSendLabel = new QLabel("Total Sent:");
     m_totalSendLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
     m_totalSendLabel->setAlignment(Qt::AlignCenter);
     m_totalSendLabel->setFont(font);
     m_totalSendLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
-    m_totalCopiesLabel = new QLabel(tr("Total Copies:"));
+    m_totalCopiesLabel = new QLabel("Total Copies:");
     m_totalCopiesLabel->setMinimumSize(MINIMUM_INFO_LABEL_WIDTH, MINIMUM_INFO_LABEL_HEIGHT);
     m_totalCopiesLabel->setAlignment(Qt::AlignCenter);
     m_totalCopiesLabel->setFont(font);
     m_totalCopiesLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    m_speedUnitLabel = new QLabel(tr("MBps"));
+    m_speedUnitLabel = new QLabel("MBps");
     m_speedUnitLabel->setMinimumSize(MINIMUM_UNIT_LABEL_WIDTH, MINIMUM_UNIT_LABEL_HEIGHT);
     m_speedUnitLabel->setAlignment(Qt::AlignCenter);
     m_speedUnitLabel->setFont(font);
     m_speedUnitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    m_totalSendUnitLabel = new QLabel(tr("B"));
+    m_totalSendUnitLabel = new QLabel("B");
     m_totalSendUnitLabel->setMinimumSize(MINIMUM_UNIT_LABEL_WIDTH, MINIMUM_UNIT_LABEL_HEIGHT);
     m_totalSendUnitLabel->setAlignment(Qt::AlignCenter);
     m_totalSendUnitLabel->setFont(font);
     m_totalSendUnitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
     // Initialize buttons
-    m_fileSendButton = new QPushButton(tr("Send File"));
+    m_fileSendButton = new QPushButton("Send File");
     m_fileSendButton->setMinimumSize(80, 30);
     m_fileSendButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DialogNoButton));
     m_fileSendButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -629,7 +723,7 @@ void MainWindow::setupUi() {
     m_packetSizeLineEdit = new QLineEdit();
     m_packetSizeLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_packetSizeLineEdit->setText("10");
-    m_packetSizeLineEdit->setValidator(new QIntValidator(10, 65536, this));
+    m_packetSizeLineEdit->setValidator(new QIntValidator(16, 65536, this));
     m_packetSizeLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_burstSizeLineEdit = new QLineEdit();
@@ -658,7 +752,6 @@ void MainWindow::setupUi() {
     m_packetPatternLineEdit->setText("AA");
     m_packetPatternLineEdit->setMaxLength(2);
     m_packetPatternLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    
 
     m_pathToFileLineEdit = new QLineEdit();
     m_pathToFileLineEdit->setMinimumSize(2 * MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
@@ -684,7 +777,7 @@ void MainWindow::setupUi() {
     m_ppsLineEdit->setMinimumSize(MINIMUM_INFO_LINEEDIT_WIDTH, MINIMUM_INFO_LINEEDIT_HEIGHT);
     m_ppsLineEdit->setReadOnly(true);
     m_ppsLineEdit->setText("0");
-    m_ppsLineEdit->setAlignment(Qt::AlignRight);
+    m_ppsLineEdit->setAlignment(Qt::AlignCenter);
     m_ppsLineEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     m_totalSendLineEdit = new QLineEdit();
@@ -704,7 +797,7 @@ void MainWindow::setupUi() {
     // Initialize charts
     m_bpsSeries = new QLineSeries();
     m_bpsChart = new QChart();
-    m_bpsChart->setTitle(tr("Bits per second"));
+    m_bpsChart->setTitle("Bits per second");
     m_bpsChart->setAnimationOptions(QChart::NoAnimation);
     m_bpsChart->setTheme(QChart::ChartThemeDark);
     m_bpsChart->addSeries(m_bpsSeries);
@@ -721,7 +814,7 @@ void MainWindow::setupUi() {
     
     m_BPSSeries = new QLineSeries();
     m_BPSChart = new QChart();
-    m_BPSChart->setTitle(tr("Bytes per second"));
+    m_BPSChart->setTitle("Bytes per second");
     m_BPSChart->setAnimationOptions(QChart::NoAnimation);
     m_BPSChart->setTheme(QChart::ChartThemeDark);
     m_BPSChart->addSeries(m_BPSSeries);
@@ -739,18 +832,18 @@ void MainWindow::setupUi() {
     // Initialize tab widget
     m_tabWidget = new QTabWidget();
     m_tabWidget->setMinimumSize(300, 400);
-    m_tabWidget->addTab(m_bpsChartView, tr("Bits per second"));
-    m_tabWidget->addTab(m_BPSChartView, tr("Bytes per second"));
+    m_tabWidget->addTab(m_bpsChartView, "Bits per second");
+    m_tabWidget->addTab(m_BPSChartView, "Bytes per second");
     m_tabWidget->setCurrentIndex(0);
     m_tabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     // Set up group boxes
-    m_parametersGroupBox = new QGroupBox(tr("Parameters"));
+    m_parametersGroupBox = new QGroupBox("Parameters");
     m_parametersGroupBox->setMinimumSize(600, 400);
     m_parametersGroupBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-    m_infoGroupBox = new QGroupBox(tr("Info"));
-    m_infoGroupBox->setMinimumSize(200, 400);
+    m_infoGroupBox = new QGroupBox("Info");
+    m_infoGroupBox->setMinimumSize(300, 400);
     m_infoGroupBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     m_infoGroupBox->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     m_infoGroupBox->setFocusPolicy(Qt::NoFocus);
@@ -859,28 +952,28 @@ void MainWindow::setupUi() {
 
     // Set up the menu bar
     m_menuBar = new QMenuBar(this);
-    m_fileMenu = new QMenu(tr("File"), this);
-    m_refreshInterfacesAction = new QAction(tr("Refresh Interfaces"), this);
+    m_fileMenu = new QMenu("File", this);
+    m_refreshInterfacesAction = new QAction("Refresh Interfaces", this);
     m_fileMenu->addAction(m_refreshInterfacesAction);
     m_fileMenu->addSeparator();
-    m_savingsMenu = new QMenu(tr("Save.."), this);
-    m_saveBpsGraphAction = new QAction(tr("Save bps Graph"), this);
-    m_saveBPSGraphAction = new QAction(tr("Save BPS Graph"), this);
+    m_savingsMenu = new QMenu("Save..", this);
+    m_saveBpsGraphAction = new QAction("Save bps Graph", this);
+    m_saveBPSGraphAction = new QAction("Save BPS Graph", this);
     m_savingsMenu->addAction(m_saveBpsGraphAction);
     m_savingsMenu->addSeparator();
     m_savingsMenu->addAction(m_saveBPSGraphAction);
     m_fileMenu->addMenu(m_savingsMenu);
     m_menuBar->addMenu(m_fileMenu);
 
-    m_settingsMenu = new QMenu(tr("Settings"), this);
-    m_themeMenu = new QMenu(tr("Theme"), this);
-    m_darkThemeAction = new QAction(tr("Dark"), this);
-    m_lightThemeAction = new QAction(tr("Light"), this);
+    m_settingsMenu = new QMenu("Settings", this);
+    m_themeMenu = new QMenu("Theme", this);
+    m_darkThemeAction = new QAction("Dark", this);
+    m_lightThemeAction = new QAction("Light", this);
     m_themeMenu->addAction(m_darkThemeAction);
     m_themeMenu->addSeparator();
     m_themeMenu->addAction(m_lightThemeAction);
     m_settingsMenu->addMenu(m_themeMenu);
-    m_languageMenu = new QMenu(tr("Language"), this);
+    m_languageMenu = new QMenu("Language", this);
     m_uaLanguageAction = new QAction("Українська", this);
     m_enLanguageAction = new QAction("English", this);
     m_languageMenu->addAction(m_uaLanguageAction);
@@ -889,8 +982,8 @@ void MainWindow::setupUi() {
     m_settingsMenu->addMenu(m_languageMenu);
     m_menuBar->addMenu(m_settingsMenu);
     
-    //m_aboutAction = new QAction(tr("About"), this);
-    m_helpAction = new QAction(tr("Help"), this);
+    //m_aboutAction = new QAction("About", this);
+    m_helpAction = new QAction("Help", this);
     m_menuBar->addAction(m_helpAction);
     //m_menuBar->addSeparator();
     //m_menuBar->addAction(m_aboutAction);   

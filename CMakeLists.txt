@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 project(TrafficGenerator)
 
 # C++ Standard
@@ -198,6 +198,52 @@ if(NOT EXISTS ${PF_RING_LIB_DIR} OR NOT EXISTS ${PF_RING_LIBPCAP_DIR} OR NOT EXI
     endif()
 endif()
 
+find_package(Qt6 COMPONENTS LinguistTools REQUIRED)
+if (NOT Qt6_LRELEASE_EXECUTABLE)
+    message(FATAL_ERROR "Qt Linguist tools not found. Please install Qt Linguist tools.")
+endif()
+
+# TS source files
+set(TS_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Translations/TrafficGenerator_uk.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Translations/TrafficGenerator_en.ts
+)
+
+# Directory where QM files should go
+set(TRANSLATIONS_OUTPUT_DIR ${CMAKE_BINARY_DIR}/Translations)
+
+# Ensure output directory exists
+file(MAKE_DIRECTORY ${TRANSLATIONS_OUTPUT_DIR})
+
+add_custom_target(translations ALL)
+
+foreach(_ts_file ${TS_FILES})
+    # Extract base name without extension
+    get_filename_component(_ts_name ${_ts_file} NAME_WE)
+
+    # Define output qm file path
+    set(_qm_file ${TRANSLATIONS_OUTPUT_DIR}/${_ts_name}.qm)
+
+    # Compile .ts to .qm
+    add_custom_command(
+        OUTPUT ${_qm_file}
+        COMMAND ${Qt6_LRELEASE_EXECUTABLE} ${_ts_file} -qm ${_qm_file}
+        DEPENDS ${_ts_file}
+        COMMENT "Compiling translation file: ${_qm_file}"
+    )
+
+    # Add per-language target
+    add_custom_target(translate_${_ts_name} ALL
+        DEPENDS ${_qm_file}
+    )
+
+    # Add to main translations target
+    add_dependencies(translations translate_${_ts_name})
+
+    # Collect all .qm files
+    list(APPEND QM_FILES ${_qm_file})
+endforeach()
+
 # Project sources
 set(ALL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/common_generator.cpp
@@ -212,6 +258,7 @@ set(ALL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SettingsManager.cpp
 )
 
+# Main target
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
 # Add PF_RING if available

@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QLineSeries>
+#include <QLocale>
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
@@ -27,6 +28,7 @@
 #include <QThread>
 #include <QTime>
 #include <QTimeEdit>
+#include <QTranslator>
 #include <QVBoxLayout>
 #include <QValueAxis>
 
@@ -104,6 +106,7 @@ private:
     void setupConnections();
     void setupSettings();
     void setupUtilitiesThread();
+    void translateUI();
     
     void saveGraph(const QChartView *chartView);
 

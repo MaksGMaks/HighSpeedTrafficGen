@@ -36,8 +36,8 @@ bool SettingsManager::load() {
         return false;
     }
 
-    m_theme = obj["theme"].toString("light");
-    m_language = obj["language"].toString("en");
+    m_theme = obj["theme"].toString("dark");
+    m_language = obj["language"].toString("uk");
 
     return true;
 }
