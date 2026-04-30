@@ -1,12 +1,12 @@
-#include "HelpPage.hpp"
+#include "HelpPage_old.hpp"
 
-HelpPage::HelpPage(QWidget *parent)
+HelpPage_old::HelpPage_old(QWidget *parent)
 : QMainWindow(parent), mainLayout(new QVBoxLayout(this)), helpTextBrowser(new QTextBrowser(this)) {
     setupUi();
     loadHelpContent();
 }
 
-void HelpPage::setupUi() {
+void HelpPage_old::setupUi() {
     setWindowTitle("Help");
     setMinimumSize(1000, 800);
     setWindowIcon(QIcon(":/icons/help_icon.png"));
@@ -21,7 +21,7 @@ void HelpPage::setupUi() {
     setCentralWidget(centralWidget);
 }
 
-void HelpPage::loadHelpContent() {
+void HelpPage_old::loadHelpContent() {
     QString helpContent = tr(R"(
     <h1>High Speed Traffic Generator manual page</h1>
 

@@ -5,11 +5,11 @@
 #include <QHBoxLayout>
 #include <QTextBrowser>
 
-class HelpPage : public QMainWindow {
+class HelpPage_old : public QMainWindow {
     Q_OBJECT
 public:
-    explicit HelpPage(QWidget *parent = nullptr);
-    ~HelpPage() = default;
+    explicit HelpPage_old(QWidget *parent = nullptr);
+    ~HelpPage_old() = default;
 
 private:
     QVBoxLayout *mainLayout;          // Main layout for the HelpPage

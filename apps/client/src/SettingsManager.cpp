@@ -1,4 +1,4 @@
-#include "SettingsManager.hpp"
+#include "../../../src/SettingsManager.hpp"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>

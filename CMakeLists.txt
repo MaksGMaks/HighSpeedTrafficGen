@@ -1,331 +1,293 @@
 cmake_minimum_required(VERSION 3.21)
-project(TrafficGenerator)
+project(HSET_Generator)
 
 # C++ Standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Driver
-# option(LOAD_DRIVER "Build and load driver if network device support" OFF)
+# LSP server
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Qt auto settings
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
+option(BUILD_CLIENT "Build the client application." ON)
+option(BUILD_SERVER "Build the server application." OFF)
 
-# Only build on Linux
-if (NOT UNIX)
-    message(FATAL_ERROR "This project is only supported on Linux.")
-endif()
-
-# Function to install packages based on distro
-function(install_package_if_missing debian_name fedora_name arch_name)
-    execute_process(
-        COMMAND bash -c "
-        if [ -f /etc/debian_version ]; then
-            if dpkg -s ${debian_name} 2>/dev/null | grep -q 'Status: install ok installed'; then
-                echo '[INFO] ${debian_name} already installed.';
-            else
-                echo '[INFO] Attempting to install ${debian_name}...';
-                sudo apt update && sudo apt install -y ${debian_name};
-            fi
-        elif [ -f /etc/fedora-release ]; then
-            if rpm -q ${fedora_name} &>/dev/null; then
-                echo '[INFO] ${fedora_name} already installed.';
-            else
-                echo '[INFO] Attempting to install ${fedora_name}...';
-                sudo dnf install -y ${fedora_name};
-            fi
-        elif [ -f /etc/arch-release ]; then
-            if pacman -Q ${arch_name} &>/dev/null; then
-                echo '[INFO] ${arch_name} already installed.';
-            else
-                echo '[INFO] Attempting to install ${arch_name}...';
-                sudo pacman -Sy --noconfirm ${arch_name};
-            fi
-        else
-            echo '[ERROR] Unknown distro. Install manually.';
-            exit 1;
-        fi"
-        RESULT_VARIABLE result
-    )
-    if (NOT result EQUAL 0)
-        message(FATAL_ERROR "Failed to install (${debian_name} / ${fedora_name} / ${arch_name}).")
-    endif()
-endfunction()
-
-# Find PkgConfig for dependencies
-find_package(PkgConfig QUIET)
-if (PKG_CONFIG_FOUND)
-    message(STATUS "PkgConfig found: ${PKG_CONFIG_EXECUTABLE}")
+if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+    set(N $ENV{CMAKE_BUILD_PARALLEL_LEVEL})
 else()
-    message(Status "PkgConfig NOT found. Installing:")
-    install_package_if_missing("pkg-config" "pkgconf-pkg-config" "pkgconf")
+    set(N 0)
 endif()
 
-# Attempt to find Qt first
-find_package(Qt6 COMPONENTS Core Charts Widgets Gui QUIET)
+set(SCRIPTS_DIR "${CMAKE_SOURCE_DIR}/scripts")
 
-# If Qt not found, fetch and build it to third-party
-if (NOT Qt6_FOUND)
-    message(STATUS "Installing qt dependencies")
-    install_package_if_missing("libgl1-mesa-dev" "mesa-libGL-devel" "mesa")
-    install_package_if_missing("libx11-xcb-dev" "libX11-xcb-devel" "libx11")
-    install_package_if_missing("libxcb1-dev" "libxcb-devel" "libxcb")
-    install_package_if_missing("libglu1-mesa-dev" "mesa-libGLU-devel" "glu")
-    install_package_if_missing("libx11-dev" "libX11-devel" "libx11")
-    if(NOT Qt6_FOUND)
-        message(FATAL_ERROR "Qt6 not found. Please install it from official site: \nhttps://www.qt.io/download-qt-installer-oss \nand set CMAKE_PREFIX_PATH.\nIf Qt installed but you get this error, run CMake with \n-DCMAKE_PREFIX_PATH=/path/to/Qt6/lib/cmake")
-    else()
-        message(STATUS "Qt found")
-    endif()
-endif()
+# Third-parties libs
+set(BOOST_LIB_DIR "${CMAKE_SOURCE_DIR}/third-party/boost")
+set(BOOST_MAKEFILE "${SCRIPTS_DIR}/boost_install.mk")
+set(BOOST_BAT "${SCRIPTS_DIR}/boost_install.bat")
 
-message(STATUS "Using Qt version: ${Qt6_VERSION}")
+set(NLOHMANNJSON_DIR "${CMAKE_SOURCE_DIR}/external/nlohmann_json")
+set(NLOHMANNJSON_LIB_DIR "${CMAKE_SOURCE_DIR}/third-party/nlohmann_json")
+set(NLOHMANNJSON_MAKEFILE "${SCRIPTS_DIR}/nlohmann_json_install.mk")
+set(NLOHMANNJSON_BAT "${SCRIPTS_DIR}/nlohmann_json_install.bat")
 
-# DPDK
-set(DPDK_MAKEFILE "${CMAKE_SOURCE_DIR}/dpdk_install.mk")
-pkg_check_modules(DPDK QUIET libdpdk)
-if (NOT DPDK_FOUND)
-    message(STATUS "DPDK not found. Installing...")
-    message(STATUS "Installing DPDK dependencies...")
+set(PCAPPP_DIR "${CMAKE_SOURCE_DIR}/external/PcapPlusPlus")
+set(PCAPPP_LIB_DIR "${CMAKE_SOURCE_DIR}/third-party/pcapplusplus")
+set(PCAPPP_MAKEFILE "${SCRIPTS_DIR}/pcapplusplus_install.mk")
+set(PCAPPP_BAT "${SCRIPTS_DIR}/pcapplusplus_install.bat")
 
-    install_package_if_missing("build-essential" "@development-tools" "base-devel")
-    install_package_if_missing("meson" "meson" "meson")
-    install_package_if_missing("python3-pyelftools" "python3-pyelftools" "python-pyelftools")
-    install_package_if_missing("libnuma-dev" "numactl-devel" "numactl")
-    install_package_if_missing("pkgconf" "pkgconf" "pkgconf")
-    install_package_if_missing("ninja-build" "ninja-build" "ninja")
 
-    execute_process(
-        COMMAND make -f ${DPDK_MAKEFILE} get_dpdk
-        RESULT_VARIABLE DPDK_LIB_MAKE_RESULT
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    if(NOT DPDK_LIB_MAKE_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to build DPDK")
-    endif()
-    pkg_check_modules(DPDK REQUIRED libdpdk)
-    message(STATUS "Removing external source...")
-    execute_process(
-        COMMAND make -f ${DPDK_MAKEFILE} remove_external
-        RESULT_VARIABLE REMOVE_DPDK_MAKE_RESULT
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    if(NOT REMOVE_DPDK_MAKE_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to clean external directory")
-    endif()
-endif()
-include_directories(${DPDK_INCLUDE_DIRS})
-
-# PF_RING
-
-# PF_RING Setup
-message(STATUS "Checking for PF_RING dependencies...")
-install_package_if_missing("libnl-genl-3-dev" "libnl3-devel" "libnl")
-install_package_if_missing("bison" "bison" "bison")
-install_package_if_missing("flex" "flex" "flex")
-install_package_if_missing("gcc-12" "gcc-12" "gcc") 
-install_package_if_missing("g++-12" "g++-12" "g++")
-
-set(PF_RING_DIR "${CMAKE_SOURCE_DIR}/external/pf_ring")
-set(PF_RING_LIB_DIR "${CMAKE_SOURCE_DIR}/third-party/pf_ring")
-set(PF_RING_LIBPCAP_DIR "${CMAKE_SOURCE_DIR}/third-party/pf_ring_libpcap")
-set(PF_RING_KERNEL_DIR "${CMAKE_SOURCE_DIR}/third-party/pf_ring_kernel")
-set(PF_RING_MAKEFILE "${CMAKE_SOURCE_DIR}/pf_ring_install.mk")
-
-if(NOT EXISTS ${PF_RING_LIB_DIR} OR NOT EXISTS ${PF_RING_LIBPCAP_DIR} OR NOT EXISTS ${PF_RING_KERNEL_DIR})
-    if(NOT EXISTS "${PF_RING_DIR}")
-        message(STATUS "PF_RING not found. Cloning from GitHub...")
+if (UNIX)
+    function(install_package_if_missing debian_name fedora_name arch_name)
         execute_process(
-            COMMAND git clone https://github.com/ntop/PF_RING.git ${PF_RING_DIR}
-            RESULT_VARIABLE GIT_CLONE_RESULT
+                COMMAND bash -c "
+      if [ -f /etc/debian_version ]; then
+        if dpkg -s ${debian_name} 2>/dev/null | grep -q 'Status: install ok installed'; then
+          echo '[INFO] ${debian_name} already installed.';
+        else
+          echo '[INFO] Attempting to install ${debian_name}...';
+          sudo apt update && sudo apt install -y ${debian_name};
+        fi
+      elif [ -f /etc/fedora-release ]; then
+        if rpm -q ${fedora_name} &>/dev/null; then
+          echo '[INFO] ${fedora_name} already installed.';
+        else
+          echo '[INFO] Attempting to install ${fedora_name}...';
+          sudo dnf install -y ${fedora_name};
+        fi
+      elif [ -f /etc/arch-release ]; then
+        if pacman -Q ${arch_name} &>/dev/null; then
+          echo '[INFO] ${arch_name} already installed.';
+        else
+          echo '[INFO] Attempting to install ${arch_name}...';
+          sudo pacman -Sy --noconfirm ${arch_name};
+        fi
+      else
+        echo '[ERROR] Unknown distro. Install manually.';
+        exit 1;
+      fi"
+                RESULT_VARIABLE result
         )
-        if(NOT GIT_CLONE_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to clone PF_RING repository")
+        if (NOT result EQUAL 0)
+            message(FATAL_ERROR "Failed to install (${debian_name} / ${fedora_name} / ${arch_name}).")
         endif()
+    endfunction()
+
+    message(STATUS "Checking for boost...")
+    if(NOT EXISTS ${BOOST_LIB_DIR})
+        message(STATUS "Boost not found. Preparing script to install to third-party...")
+        if(N GREATER 0)
+            execute_process(
+                    COMMAND make -j ${N} -f ${BOOST_MAKEFILE} get_boost_lin
+                    RESULT_VARIABLE BOOST_LIB_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        else()
+            execute_process(
+                    COMMAND make -f ${BOOST_MAKEFILE} get_boost_lin
+                    RESULT_VARIABLE BOOST_LIB_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        endif()
+        if(NOT BOOST_LIB_MAKE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to install BOOST")
+        else()
+            message(Status "Installation completed")
+        endif()
+    else()
+        message(STATUS "Boost installed. Make sure it's not damaged")
     endif()
-    message(STATUS "Checking PF_RING existing...")
-    if(NOT EXISTS ${PF_RING_LIB_DIR})
-        message(STATUS "PF_RING not existing. Building LIBPFRING...")
+
+    message(STATUS "Checking for nlohmann/json...")
+    if(NOT EXISTS ${NLOHMANNJSON_LIB_DIR})
+        if(NOT EXISTS "${NLOHMANNJSON_DIR}")
+            message(STATUS "nlohmann/json not found. Cloning from GitHub...")
+            execute_process(
+                    COMMAND git clone --depth 1 --branch v3.11.3
+                    https://github.com/nlohmann/json.git
+                    ${NLOHMANNJSON_DIR}
+                    RESULT_VARIABLE GIT_CLONE_RESULT
+            )
+            if(NOT GIT_CLONE_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to clone nlohmann/json repository")
+            endif()
+        endif()
+        message(STATUS "nlohmann/json not found. Preparing script to install to third-party...")
+        if(N GREATER 0)
+            execute_process(
+                    COMMAND make -j ${N} -f ${NLOHMANNJSON_MAKEFILE} get_nlohmann
+                    RESULT_VARIABLE NLOHMANNJSON_LIB_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        else()
+            execute_process(
+                    COMMAND make -f ${NLOHMANNJSON_MAKEFILE} get_nlohmann
+                    RESULT_VARIABLE NLOHMANNJSON_LIB_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        endif()
+        if(NOT NLOHMANNJSON_LIB_MAKE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to install nlohmann/json")
+        else()
+            message(Status "Installation completed")
+        endif()
+        message(STATUS "Removing external source...")
         execute_process(
-            COMMAND make -f ${PF_RING_MAKEFILE} libpfring
-            RESULT_VARIABLE PF_RING_LIB_MAKE_RESULT
+                COMMAND make -f ${NLOHMANNJSON_MAKEFILE} remove_external
+                RESULT_VARIABLE REMOVE_NLOHMANNJSON_MAKE_RESULT
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+        if(NOT REMOVE_NLOHMANNJSON_MAKE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to clean external directory")
+        endif()
+    else()
+        message(STATUS "nlohmann/json installed. Make sure it's not damaged")
+    endif()
+
+    message(STATUS "Checking for PcapPlusPlus...")
+    if(NOT EXISTS ${PCAPPP_LIB_DIR})
+        if(NOT EXISTS "${PCAPPP_DIR}")
+            message(STATUS "PcapPlusPlus not found. Cloning from GitHub...")
+            execute_process(
+                    COMMAND git clone --depth 1 --branch v25.05
+                    https://github.com/seladb/PcapPlusPlus.git
+                    ${PCAPPP_DIR}
+                    RESULT_VARIABLE GIT_CLONE_RESULT
+            )
+            if(NOT GIT_CLONE_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to clone PcapPlusPlus repository")
+            endif()
+        endif()
+
+        message(STATUS "PcapPlusPlus not found. Building...")
+        if(N GREATER 0)
+            execute_process(
+                    COMMAND COMMAND make -j ${N} -f "${PCAPPP_MAKEFILE}" get_pcapplusplus
+                    RESULT_VARIABLE PCAPPP_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        else()
+            execute_process(
+                    COMMAND make -f "${PCAPPP_MAKEFILE}" get_pcapplusplus
+                    RESULT_VARIABLE PCAPPP_MAKE_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        endif()
+        if(NOT PCAPPP_MAKE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to build PcapPlusPlus")
+        endif()
+
+        message(STATUS "Removing PcapPlusPlus external source...")
+        execute_process(
+                COMMAND make -f "${PCAPPP_MAKEFILE}" remove_external
+                RESULT_VARIABLE PCAPPP_REMOVE_RESULT
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+        if(NOT PCAPPP_REMOVE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to remove PcapPlusPlus external source")
+        endif()
+    else()
+        message(STATUS "PcapPlusPlus directory exists, make sure it's not damaged")
+    endif()
+
+elseif(WIN32)
+    message(STATUS "Checking for boost...")
+    if(NOT EXISTS ${BOOST_LIB_DIR})
+        message(STATUS "Boost not found. Preparing script to install to third-party...")
+        execute_process(
+            COMMAND cmd /c ${BOOST_BAT}
+            RESULT_VARIABLE BOOST_LIB_BAT_RESULT
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
-        if(NOT PF_RING_LIB_MAKE_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to build LIBPFRING")
+        if(NOT BOOST_LIB_BAT_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to install BOOST")
+        else()
+            message(STATUS "Installation completed")
         endif()
     else()
-        message(STATUS "PF_RING directory exists, make sure it's not damaged")
+        message(STATUS "Boost installed. Make sure it's not damaged")
     endif()
-    message(STATUS "Checking LIBPCAP existing...")
-    if(NOT EXISTS ${PF_RING_LIBPCAP_DIR})
-        message(STATUS "LIBPCAP not existing. Building LIBPCAP...")
+
+    message(STATUS "Checking for nlohmann/json...")
+    if(NOT EXISTS ${BOOST_LIB_DIR})
+        if(NOT EXISTS "${NLOHMANNJSON_DIR}")
+            message(STATUS "nlohmann/json not found. Cloning from GitHub...")
+            execute_process(
+                    COMMAND git clone --depth 1 --branch v3.11.3
+                    https://github.com/nlohmann/json.git
+                    ${NLOHMANNJSON_DIR}
+                    RESULT_VARIABLE GIT_CLONE_RESULT
+            )
+            if(NOT GIT_CLONE_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to clone nlohmann/json repository")
+            endif()
+        endif()
+        message(STATUS "nlohmann/json not found. Preparing script to install to third-party...")
         execute_process(
-            COMMAND make -f ${PF_RING_MAKEFILE} libpcap
-            RESULT_VARIABLE LIBPCAP_MAKE_RESULT
+            COMMAND cmd /c ${NLOHMANNJSON_BAT}
+            RESULT_VARIABLE NLOHMANNJSON_LIB_BAT_RESULT
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
-        if(NOT LIBPCAP_MAKE_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to build LIBPCAP")
+        if(NOT NLOHMANNJSON_BAT_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to install nlohmann/json")
+        else()
+            message(STATUS "Installation completed")
         endif()
     else()
-        message(STATUS "LIBPCAP directory exists, make sure it's not damaged")
+        message(STATUS "nlohmann/json installed. Make sure it's not damaged")
     endif()
-    message(STATUS "Checking PF_RING KERNEL existing...")
-    if(NOT EXISTS ${PF_RING_KERNEL_DIR})
-        message(STATUS "PF_RING KERNEL not existing. Building PF_RING KERNEL...")
+
+    message(STATUS "Checking for PcapPlusPlus...")
+    if(NOT EXISTS ${PCAPPP_LIB_DIR})
+        if(NOT EXISTS "${PCAPPP_DIR}")
+            message(STATUS "PcapPlusPlus not found. Cloning from GitHub...")
+            execute_process(
+                    COMMAND git clone --depth 1 --branch v25.05
+                    https://github.com/seladb/PcapPlusPlus.git
+                    ${PCAPPP_DIR}
+                    RESULT_VARIABLE GIT_CLONE_RESULT
+            )
+            if(NOT GIT_CLONE_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to clone PcapPlusPlus repository")
+            endif()
+        endif()
+
+        message(STATUS "PcapPlusPlus not found. Building...")
+        if(N GREATER 0)
+            execute_process(
+                    COMMAND cmd /c "${PCAPPP_BAT}" get_pcapplusplus ${N}
+                    RESULT_VARIABLE PCAPPP_BAT_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        else()
+            execute_process(
+                    COMMAND cmd /c "${PCAPPP_BAT}" get_pcapplusplus
+                    RESULT_VARIABLE PCAPPP_BAT_RESULT
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            )
+        endif()
+        if(NOT PCAPPP_BAT_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to build PcapPlusPlus")
+        endif()
+
+        message(STATUS "Removing PcapPlusPlus external source...")
         execute_process(
-            COMMAND make -f ${PF_RING_MAKEFILE} kernel
-            RESULT_VARIABLE PF_RING_KERNEL_MAKE_RESULT
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                COMMAND cmd /c "${PCAPPP_BAT}" remove_external
+                RESULT_VARIABLE PCAPPP_REMOVE_RESULT
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
-        if(NOT PF_RING_KERNEL_MAKE_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to build PF_RING KERNEL")
+        if(NOT PCAPPP_REMOVE_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to remove PcapPlusPlus external source")
         endif()
     else()
-        message(STATUS "PF_RING directory exists, make sure it's not damaged")
+        message(STATUS "PcapPlusPlus directory exists, make sure it's not damaged")
     endif()
-    message(STATUS "Removing external source...")
-    execute_process(
-        COMMAND make -f ${PF_RING_MAKEFILE} remove_external
-        RESULT_VARIABLE REMOVE_PF_RING_MAKE_RESULT
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    if(NOT REMOVE_PF_RING_MAKE_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to clean external directory")
-    endif()
+
+endif()
+add_subdirectory(libs/common)
+
+if(BUILD_CLIENT)
+    add_subdirectory(apps/client)
 endif()
 
-find_package(Qt6 COMPONENTS LinguistTools REQUIRED)
-if (NOT Qt6_LRELEASE_EXECUTABLE)
-    message(FATAL_ERROR "Qt Linguist tools not found. Please install Qt Linguist tools.")
-endif()
-
-# TS source files
-set(TS_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Translations/TrafficGenerator_uk.ts
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Translations/TrafficGenerator_en.ts
-)
-
-# Directory where QM files should go
-set(TRANSLATIONS_OUTPUT_DIR ${CMAKE_BINARY_DIR}/Translations)
-
-# Ensure output directory exists
-file(MAKE_DIRECTORY ${TRANSLATIONS_OUTPUT_DIR})
-
-add_custom_target(translations ALL)
-
-foreach(_ts_file ${TS_FILES})
-    # Extract base name without extension
-    get_filename_component(_ts_name ${_ts_file} NAME_WE)
-
-    # Define output qm file path
-    set(_qm_file ${TRANSLATIONS_OUTPUT_DIR}/${_ts_name}.qm)
-
-    # Compile .ts to .qm
-    add_custom_command(
-        OUTPUT ${_qm_file}
-        COMMAND ${Qt6_LRELEASE_EXECUTABLE} ${_ts_file} -qm ${_qm_file}
-        DEPENDS ${_ts_file}
-        COMMENT "Compiling translation file: ${_qm_file}"
-    )
-
-    # Add per-language target
-    add_custom_target(translate_${_ts_name} ALL
-        DEPENDS ${_qm_file}
-    )
-
-    # Add to main translations target
-    add_dependencies(translations translate_${_ts_name})
-
-    # Collect all .qm files
-    list(APPEND QM_FILES ${_qm_file})
-endforeach()
-
-# Project sources
-set(ALL_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/common_generator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/DPDK_Engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/Generator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator/PFRING_Engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/HelpPage.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/MainWindow.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UI/UInt64Validator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UIUpdate/UIUpdater.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/SettingsManager.cpp
-)
-
-# Main target
-add_executable(${PROJECT_NAME} ${ALL_SOURCES})
-
-# Add PF_RING if available
-if (EXISTS "${PF_RING_LIB_DIR}/lib")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PF_RING_LIB_DIR}/include)
-    link_directories(${PF_RING_LIB_DIR}/lib)
-endif()
-if (EXISTS "${PF_RING_LIBPCAP_DIR}/lib")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PF_RING_LIBPCAP_DIR}/include)
-    link_directories(${PF_RING_LIBPCAP_DIR}/lib)
-endif()
-if (EXISTS "${PF_RING_KERNEL_DIR}/module")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PF_RING_KERNEL_DIR}/include)
-    link_directories(${PF_RING_KERNEL_DIR}/module)
-endif()
-
-# Include source directory
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# Compile options
-target_compile_options(${PROJECT_NAME} PRIVATE -mssse3)
-
-# Link Qt and DPDK libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    Qt6::Charts
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    ${DPDK_LIBRARIES}
-    ${PF_RING_LIB_DIR}/lib/libpfring.so.9.1.0
-    ${PF_RING_LIBPCAP_DIR}/lib/libpcap.so.1.10.1
-)
-
-# Output directory
-set_target_properties(${PROJECT_NAME} PROPERTIES 
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-)
-
-if(LOAD_DRIVER)
-    message(STATUS "Installing dependencies...")
-    install_package_if_missing("ethtool" "ethtool" "ethtool")
-    install_package_if_missing("net-tools" "net-tools" "net-tools")
-    if(NOT EXISTS "${PF_RING_DIR}")
-        message(STATUS "PF_RING not found. Cloning from GitHub...")
-        execute_process(
-            COMMAND git clone https://github.com/ntop/PF_RING.git ${PF_RING_DIR}
-            RESULT_VARIABLE GIT_CLONE_RESULT
-        )
-        if(NOT GIT_CLONE_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to clone PF_RING repository")
-        endif()
-    endif()
-    execute_process(
-        COMMAND make -f ${PF_RING_MAKEFILE} build_driver
-        RESULT_VARIABLE DRIVER_BUILD_MAKE
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    if(NOT DRIVER_BUILD_MAKE EQUAL 0)
-        message(FATAL_ERROR "Failed to build PF_RING_DRIVERS")
-    endif()
-    message(STATUS "Removing external source...")
-    execute_process(
-        COMMAND make -f ${PF_RING_MAKEFILE} remove_external
-        RESULT_VARIABLE REMOVE_PF_RING_MAKE_RESULT
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
-    if(NOT REMOVE_PF_RING_MAKE_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to clean external directory")
-    endif()
+if(BUILD_SERVER)
+    add_subdirectory(apps/server)
 endif()

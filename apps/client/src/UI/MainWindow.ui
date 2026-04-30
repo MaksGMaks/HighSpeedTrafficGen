@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>800</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QStackedWidget" name="stackedWidget">
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
+      <widget class="QWidget" name="player"/>
+      <widget class="QWidget" name="constructor">
+       <widget class="QTableWidget" name="tableWidget">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>30</y>
+          <width>301</width>
+          <height>192</height>
+         </rect>
+        </property>
+        <column>
+         <property name="text">
+          <string>Time</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Source</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Destination</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Protocol</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Length</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Data</string>
+         </property>
+        </column>
+       </widget>
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="geometry">
+         <rect>
+          <x>330</x>
+          <y>30</y>
+          <width>411</width>
+          <height>471</height>
+         </rect>
+        </property>
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
+        <widget class="QWidget" name="tab">
+         <attribute name="title">
+          <string>Network (L3/L4)</string>
+         </attribute>
+        </widget>
+        <widget class="QWidget" name="tab_2">
+         <attribute name="title">
+          <string>Ethernet (L2)</string>
+         </attribute>
+        </widget>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>Settings</string>
+    </property>
+    <widget class="QMenu" name="menuLanguage">
+     <property name="title">
+      <string>Language</string>
+     </property>
+     <addaction name="separator"/>
+     <addaction name="actionEnglish"/>
+     <addaction name="action_5"/>
+    </widget>
+    <widget class="QMenu" name="menuTheme">
+     <property name="title">
+      <string>Theme</string>
+     </property>
+     <addaction name="actionDark"/>
+     <addaction name="actionLight"/>
+    </widget>
+    <addaction name="menuTheme"/>
+    <addaction name="separator"/>
+    <addaction name="menuLanguage"/>
+    <addaction name="separator"/>
+   </widget>
+   <widget class="QMenu" name="menuTraffic_Player">
+    <property name="title">
+     <string>Traffic Player</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuPacket_Constructor">
+    <property name="title">
+     <string>Packet Constructor</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuSettings"/>
+   <addaction name="menuTraffic_Player"/>
+   <addaction name="menuPacket_Constructor"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionEnglish">
+   <property name="text">
+    <string>English</string>
+   </property>
+  </action>
+  <action name="action_5">
+   <property name="text">
+    <string>Українська</string>
+   </property>
+  </action>
+  <action name="actionDark">
+   <property name="text">
+    <string>Dark</string>
+   </property>
+  </action>
+  <action name="actionLight">
+   <property name="text">
+    <string>Light</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

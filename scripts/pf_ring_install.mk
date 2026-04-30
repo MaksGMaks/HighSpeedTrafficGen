@@ -1,10 +1,12 @@
-PF_RING_DIR ?= $(CURDIR)/external/pf_ring
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+ROOT_DIR := $(abspath $(MAKEFILE_DIR)/..)
+PF_RING_DIR ?= $(ROOT_DIR)/external/pf_ring
 
 USERLAND_DIR := $(PF_RING_DIR)/userland
 PF_RING_BUILD_DIR := $(USERLAND_DIR)/lib
 LIBPCAP_BUILD_DIR := $(PF_RING_DIR)/userland/libpcap
 
-INSTALL_DIR ?= $(CURDIR)/third-party
+INSTALL_DIR ?= $(ROOT_DIR)/third-party
 PF_RING_INSTALL_DIR := $(INSTALL_DIR)/pf_ring
 LIBPCAP_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_libpcap
 PF_RING_KERNEL_INSTALL_DIR := $(INSTALL_DIR)/pf_ring_kernel
@@ -59,7 +61,7 @@ kernel:
 	cp $(PF_RING_DIR)/kernel/linux/pf_ring.h $(PF_RING_KERNEL_INSTALL_DIR)/include/pf_ring.h
 
 remove_external:
-	rm -rf $(CURDIR)/external
+	rm -rf $(ROOT_DIR)/external
 
 clean_libpfring:
 	@echo \"Cleaning PF_RING build...\"

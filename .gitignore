@@ -2,3 +2,6 @@
 /.vscode/*
 /external/*
 /third-party/*
+/.cache/*
+/.idea/*
+/.build*
