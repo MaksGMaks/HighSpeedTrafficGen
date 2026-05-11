@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+    <class>StatisticWindow</class>
+    <widget class="QWidget" name="StatisticWindow">
+        <property name="geometry">
+            <rect><x>0</x><y>0</y><width>700</width><height>500</height></rect>
+        </property>
+        <property name="windowTitle">
+            <string>Transmission Statistics</string>
+        </property>
+        <property name="minimumSize">
+            <size><width>600</width><height>400</height></size>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout" >
+            <property name="spacing"><number>8</number></property>
+
+            <!-- Chart -->
+            <item>
+                <widget class="QChartView" name="chartView">
+                    <property name="sizePolicy">
+                        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                            <horstretch>0</horstretch><verstretch>3</verstretch>
+                        </sizepolicy>
+                    </property>
+                    <property name="minimumSize">
+                        <size><width>0</width><height>200</height></size>
+                    </property>
+                </widget>
+            </item>
+
+            <!-- Stats grid -->
+            <item>
+                <layout class="QGridLayout" name="statsGrid">
+                    <property name="spacing"><number>8</number></property>
+
+                    <item row="0" column="0">
+                        <widget class="QLabel" name="labelSpeedBytes">
+                            <property name="text"><string>Speed (B/s)</string></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                        </widget>
+                    </item>
+                    <item row="0" column="1">
+                        <widget class="QLabel" name="labelSpeedBits">
+                            <property name="text"><string>Speed (bit/s)</string></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                        </widget>
+                    </item>
+                    <item row="0" column="2">
+                        <widget class="QLabel" name="labelPktPerSec">
+                            <property name="text"><string>Packets/s</string></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                        </widget>
+                    </item>
+                    <item row="0" column="3">
+                        <widget class="QLabel" name="labelTotalPkts">
+                            <property name="text"><string>Total Packets</string></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                        </widget>
+                    </item>
+                    <item row="0" column="4">
+                        <widget class="QLabel" name="labelTotalBytes">
+                            <property name="text"><string>Total Data</string></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                        </widget>
+                    </item>
+
+                    <item row="1" column="0">
+                        <widget class="QLineEdit" name="editSpeedBytes">
+                            <property name="readOnly"><bool>true</bool></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                            <property name="placeholderText"><string>0 B/s</string></property>
+                        </widget>
+                    </item>
+                    <item row="1" column="1">
+                        <widget class="QLineEdit" name="editSpeedBits">
+                            <property name="readOnly"><bool>true</bool></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                            <property name="placeholderText"><string>0 bit/s</string></property>
+                        </widget>
+                    </item>
+                    <item row="1" column="2">
+                        <widget class="QLineEdit" name="editPktPerSec">
+                            <property name="readOnly"><bool>true</bool></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                            <property name="placeholderText"><string>0</string></property>
+                        </widget>
+                    </item>
+                    <item row="1" column="3">
+                        <widget class="QLineEdit" name="editTotalPkts">
+                            <property name="readOnly"><bool>true</bool></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                            <property name="placeholderText"><string>0</string></property>
+                        </widget>
+                    </item>
+                    <item row="1" column="4">
+                        <widget class="QLineEdit" name="editTotalBytes">
+                            <property name="readOnly"><bool>true</bool></property>
+                            <property name="alignment"><set>Qt::AlignCenter</set></property>
+                            <property name="placeholderText"><string>0 B</string></property>
+                        </widget>
+                    </item>
+                </layout>
+            </item>
+
+            <!-- Reset button -->
+            <item>
+                <layout class="QHBoxLayout">
+                    <item>
+                        <spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer>
+                    </item>
+                    <item>
+                        <widget class="QPushButton" name="resetBtn">
+                            <property name="text"><string>Reset</string></property>
+                            <property name="minimumSize"><size><width>80</width><height>28</height></size></property>
+                        </widget>
+                    </item>
+                </layout>
+            </item>
+
+        </layout>
+    </widget>
+    <customwidgets>
+        <customwidget>
+            <class>QChartView</class>
+            <extends>QGraphicsView</extends>
+            <header location="global">QtCharts/QChartView</header>
+        </customwidget>
+    </customwidgets>
+    <resources/>
+    <connections/>
+</ui>

@@ -7,45 +7,47 @@
 #include <thread>
 #include <vector>
 
-#include <QObject>
-
 #include "common_generator.hpp"
 #include "DPDK_Engine.hpp"
-#include "PFRING_Engine.hpp"
 
-class Generator : public QObject {
-    Q_OBJECT
+#include "generator_values.hpp"
+
+class Generator {
 public:
-    Generator(QObject *parent = nullptr);
+    Generator();
     ~Generator();
 
-public slots:
-    // Control method
-    void doPause();                                     // pause thread's work but don't stop it
-    void doResume();                                    // resume thread's work after pause
-    void doStart(const genParams& params);              // start thread. should be called first
-    void doStop();                                      // stop thread by joining it
+    statisticQueue* getQueueP();
 
-signals:
-    void finished();
-    void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime); 
-    void sendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime, const std::string &interfaceName);
-    void sendWarning(const std::string &message); // send warning message to UI
-    void sendError(const std::string &message);   // send error message to UI
+     // Control method
+     void doPause();                                     // pause thread's work but don't stop it
+     void doResume();                                    // resume thread's work after pause
+     void doStart(const genParams& params);              // start thread. should be called first
+     void doStop();                                      // stop thread by joining it
+//
+// signals:
+//     void finished();
+//     void sendProgress(const uint64_t &totalSend, const uint64_t &totalCopies, const struct timespec &startTime);
+//     void sendHalfProgress(const uint64_t &totalCopies, const struct timespec &startTime, const std::string &interfaceName);
+//     void sendWarning(const std::string &message); // send warning message to UI
+//     void sendError(const std::string &message);   // send error message to UI
 
 private:
-    void pfringSend();
-    void pfringZCSend();
-    void dpdkSend(); 
+    bool presetDPDK();
+    void dpdkSend();
+    void dpdkSendFile();
 
-    void pfringSendFile();
-    void pfringZCSendFile();
-    void dpdkSendFile(); 
+    void getDPDKStat();
+
+    generator::statisticQueue* statQueue = nullptr;
 
     genParams m_params;
     // Thread variables
     // Thread
     std::thread m_workerThread;
+    std::thread m_statThread;
+
+    generator::statusQueue mainQueue;
 
     // Mutex
     std::mutex m_mutex;

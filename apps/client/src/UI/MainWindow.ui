@@ -24,74 +24,10 @@
     <item>
      <widget class="QStackedWidget" name="stackedWidget">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
-      <widget class="QWidget" name="player"/>
-      <widget class="QWidget" name="constructor">
-       <widget class="QTableWidget" name="tableWidget">
-        <property name="geometry">
-         <rect>
-          <x>0</x>
-          <y>30</y>
-          <width>301</width>
-          <height>192</height>
-         </rect>
-        </property>
-        <column>
-         <property name="text">
-          <string>Time</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Source</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Destination</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Protocol</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Length</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Data</string>
-         </property>
-        </column>
-       </widget>
-       <widget class="QTabWidget" name="tabWidget">
-        <property name="geometry">
-         <rect>
-          <x>330</x>
-          <y>30</y>
-          <width>411</width>
-          <height>471</height>
-         </rect>
-        </property>
-        <property name="currentIndex">
-         <number>0</number>
-        </property>
-        <widget class="QWidget" name="tab">
-         <attribute name="title">
-          <string>Network (L3/L4)</string>
-         </attribute>
-        </widget>
-        <widget class="QWidget" name="tab_2">
-         <attribute name="title">
-          <string>Ethernet (L2)</string>
-         </attribute>
-        </widget>
-       </widget>
-      </widget>
+      <widget class="GeneratorPage" name="player"/>
+      <widget class="ConstructorPage" name="constructor"/>
      </widget>
     </item>
    </layout>
@@ -104,6 +40,9 @@
      <width>800</width>
      <height>24</height>
     </rect>
+   </property>
+   <property name="nativeMenuBar">
+    <bool>false</bool>
    </property>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -135,16 +74,25 @@
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuTraffic_Player">
+    <property name="tearOffEnabled">
+     <bool>true</bool>
+    </property>
     <property name="title">
      <string>Traffic Player</string>
     </property>
    </widget>
    <widget class="QMenu" name="menuPacket_Constructor">
+    <property name="tearOffEnabled">
+     <bool>true</bool>
+    </property>
     <property name="title">
      <string>Packet Constructor</string>
     </property>
    </widget>
    <widget class="QMenu" name="menuHelp">
+    <property name="tearOffEnabled">
+     <bool>false</bool>
+    </property>
     <property name="title">
      <string>Help</string>
     </property>
@@ -177,6 +125,20 @@
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ConstructorPage</class>
+   <extends>QWidget</extends>
+   <header>ConstructorPage.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>GeneratorPage</class>
+   <extends>QWidget</extends>
+   <header location="global">GeneratorPage.hpp</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

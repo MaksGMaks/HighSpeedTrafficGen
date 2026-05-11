@@ -11,7 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 if (UNIX)
   # Attempt to find Qt first
-  find_package(Qt6 COMPONENTS Core Charts Widgets Gui QUIET)
+  find_package(Qt6 COMPONENTS Core Charts Network Widgets Gui QUIET)
 
   # If Qt not found, fetch and build it to third-party
   if (NOT Qt6_FOUND)
@@ -87,13 +87,20 @@ endforeach()
 
 # Project sources
 set(ALL_SOURCES
-#  ${CLIENT_SRC}/Network/NetworkManager.cpp
-#  ${CLIENT_SRC}/UI/HelpPage.cpp
-#  ${CLIENT_SRC}/UI/MainWindow.cpp
+  ${CLIENT_SRC}/Network/NetworkManager.cpp
+  ${CLIENT_SRC}/UI/HelpPage.cpp
+  ${CLIENT_SRC}/UI/ConstructorPage/PacketTableModel.cpp
+  ${CLIENT_SRC}/PcapUtils/PcapReader.cpp
+  ${CLIENT_SRC}/PcapUtils/PacketBuilder.cpp
+  ${CLIENT_SRC}/UI/ConstructorPage/ConstructorPage.cpp
+  ${CLIENT_SRC}/UI/MainWindow.cpp
   ${CLIENT_SRC}/UI/ServerSelect.cpp
-#  ${CLIENT_SRC}/UI/UInt64Validator.cpp
+  ${CLIENT_SRC}/UI/GeneratorPage/RandomGenPage/ParamRow.cpp
+  ${CLIENT_SRC}/UI/GeneratorPage/StatisticWindow.cpp
+  ${CLIENT_SRC}/UI/GeneratorPage/RandomGenPage/GeneratorParams.cpp
+  ${CLIENT_SRC}/UI/GeneratorPage/PlayerPage/GeneratorPlayer.cpp
+  ${CLIENT_SRC}/UI/GeneratorPage/GeneratorPage.cpp
   ${CLIENT_SRC}/main.cpp
-#  ${CLIENT_SRC}/SettingsManager.cpp
 )
 
 # Main target
@@ -105,8 +112,22 @@ if(EXISTS ${BOOST_DIR})
   target_include_directories(${PROJECT_NAME} PRIVATE ${BOOST_DIR})
 endif()
 
+# Add nlohmann
+set(NLOHMANN_DIR "${CMAKE_SOURCE_DIR}/third-party/nlohmann_json")
+if(EXISTS ${NLOHMANN_DIR})
+  target_include_directories(${PROJECT_NAME} PRIVATE ${NLOHMANN_DIR})
+endif()
+
 # Include source directory
-target_include_directories(${PROJECT_NAME} PUBLIC ${CLIENT_BLD})
+target_include_directories(${PROJECT_NAME} PUBLIC
+  ${CLIENT_BLD}
+  ${CLIENT_SRC}/UI
+  ${CLIENT_SRC}/UI/GeneratorPage
+  ${CLIENT_SRC}/UI/GeneratorPage/RandomGenPage
+  ${CLIENT_SRC}/UI/GeneratorPage/PlayerPage
+  ${CLIENT_SRC}/UI/ConstructorPage
+  ${CLIENT_SRC}/Network
+)
 
 # Compile options
 if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
@@ -119,6 +140,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   Qt6::Charts
   Qt6::Core
   Qt6::Gui
+  Qt6::Network
   Qt6::Widgets
 )
 

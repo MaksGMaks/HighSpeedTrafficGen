@@ -1,51 +1,57 @@
 #pragma once
+#include <condition_variable>
 #include <cstdint>
-#include <cstring>
-#include <ctime>
-#include <iostream>
-#include <iomanip>
-#include <set>
-#include <string>
-#include <unistd.h>
-#include <vector>
+#include <mutex>
+#include <queue>
 
-#include <sys/ioctl.h>
+namespace generator {
+    struct statisticData {
+        uint64_t packetsSent{};
+        uint64_t bytesSent{};
+        uint64_t txErrors{};
+        uint64_t totalBytesSent{};
 
-// Linux network
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <netinet/in.h>
-#include <net/if.h>
+        statisticData(uint64_t packets, uint64_t bytes, uint64_t errors, uint64_t total)
+            : packetsSent(packets),
+              bytesSent(bytes),
+              txErrors(errors),
+              totalBytesSent(total)
+        {}
+    };
 
-struct interfaceModes {
-    std::string interfaceName{};
-    bool dpdk_support{};
-    bool pf_ring_zc_support{};
-    bool pf_ring_standart_support{};
+    struct statisticQueue {
+        std::queue<statisticData> queue{};
+        std::mutex mutex{};
+        std::condition_variable dataAval{};
+    };
 
-    interfaceModes() = default;
-    interfaceModes(const std::string interfaceName_) {
-        interfaceName = interfaceName_;
-    }
+    enum Status {
+        SUCCESS,
+        WARNING,
+        ERROR
+    };
 
-    uint8_t packValue() {
-        return (dpdk_support << 2) | (pf_ring_zc_support << 1) | pf_ring_standart_support;
-    }
-};
+    struct statusQueue {
+        std::queue<Status> queue{};
+        std::mutex mutex{};
+        std::condition_variable requestReceived{};
 
-struct genParams {
-    std::string interfaceName{};        // Name of interface for generation
-    uint8_t mode{};                     // Method, which interface use for generation (PF_RING, PF_RING ZC of DPDK)
-    uint time{};                        // Time for sending; if 0 - infinite sending
-    uint64_t speed{};                   // Speed of sending; if 0 - unlimited speed
-    uint packSize{};                    // Size of package for sending
-    bool fileSend{};                    // Is file sending
-    std::string filePath{};             // Path for file if sending
-    uint64_t copies{};                  // Copies of file or packets for sending; if 0 - infinite sending
-    uint64_t totalSend{};               // Total size of generated information; if 0 - infinite sending
-    uint8_t burstSize{};                // Size of burst for sending
-    uint8_t packetPattern{};        // Pattern for packet generation
-};
+        bool empty() {
+            std::unique_lock lock(mutex);
+            return queue.empty();
+        }
 
-std::vector<interfaceModes> findAllDevices();
-int get_interface_mtu(const std::string& ifname);
+        void pushStatus(const Status status) {
+            std::unique_lock lock(mutex);
+            queue.push(status);
+        }
+
+        Status popStatus() {
+            std::unique_lock lock(mutex);
+            const Status status = queue.front();
+            queue.pop();
+            return status;
+        }
+    };
+}
+

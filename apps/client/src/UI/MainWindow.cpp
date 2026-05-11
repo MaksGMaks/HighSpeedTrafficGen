@@ -1,11 +1,19 @@
 #include "MainWindow.hpp"
 
+#include "../../../../build/build/apps/client/HSET_GeneratorClient_autogen/include/ui_MainWindow.h"
+
 MainWindow::MainWindow(QWidget *parent)
 : QMainWindow(parent)
 , ui(new Ui::MainWindow)
-, m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str()) {
+// , m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str())
+{
     std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
     ui->setupUi(this);
+    helpPage = new HelpPage(this);
+
+    setupMenuBar();
+    loadSettings();
+
     // m_dpdkInitialized = initialize_dpdk();
     // setupUtilitiesThread();
     // setupUi();
@@ -18,11 +26,195 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow() {
     std::cout << "[MainWindow::~MainWindow] Destroying MainWindow" << std::endl;
-    // m_generator->doStop();
-    // m_utilitiesThread->quit();
-    // m_utilitiesThread->wait();
+    saveSettings();
     delete ui;
 }
+
+void MainWindow::setupMenuBar()
+{
+    // Theme actions — mutually exclusive
+    auto *themeGroup = new QActionGroup(this);
+    themeGroup->addAction(ui->actionDark);
+    themeGroup->addAction(ui->actionLight);
+    ui->actionDark->setCheckable(true);
+    ui->actionLight->setCheckable(true);
+    ui->actionLight->setChecked(true);
+
+    connect(ui->actionDark,  &QAction::triggered, this, &MainWindow::onActionDark);
+    connect(ui->actionLight, &QAction::triggered, this, &MainWindow::onActionLight);
+
+    // Language actions — mutually exclusive
+    auto *langGroup = new QActionGroup(this);
+    langGroup->addAction(ui->actionEnglish);
+    langGroup->addAction(ui->action_5);
+    ui->actionEnglish->setCheckable(true);
+    ui->action_5->setCheckable(true);
+    ui->actionEnglish->setChecked(true);
+
+    connect(ui->actionEnglish, &QAction::triggered, this, &MainWindow::onActionEnglish);
+    connect(ui->action_5,      &QAction::triggered, this, &MainWindow::onActionUkrainian);
+
+    // Tab switching — clicking the menu switches the stacked widget page
+    // Use aboutToShow to switch page when menu is opened (Wireshark-style)
+    connect(ui->menuTraffic_Player, &QMenu::aboutToShow, this, &MainWindow::onTrafficPlayerTab);
+    connect(ui->menuPacket_Constructor, &QMenu::aboutToShow, this, &MainWindow::onPacketConstructorTab);
+
+    connect(ui->menuHelp, &QMenu::aboutToShow, helpPage, &HelpPage::show);
+
+    // Reflect current page in title
+    connect(ui->stackedWidget, &QStackedWidget::currentChanged, this, [this](int idx) {
+        switch (idx) {
+        case 0: setWindowTitle("HSET — Traffic Player");      break;
+        case 1: setWindowTitle("HSET — Packet Constructor");  break;
+        }
+    });
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+void MainWindow::applyTheme(AppTheme theme)
+{
+    m_currentTheme = theme;
+    qApp->setStyleSheet(theme == AppTheme::Dark ? darkStyleSheet : lightStyleSheet);
+
+    ui->actionDark->setChecked(theme == AppTheme::Dark);
+    ui->actionLight->setChecked(theme == AppTheme::Light);
+
+    ui->constructor->tableModel()->setTheme(theme);
+    ui->constructor->tableModel()->fullReload();
+
+    ui->player->setDarkTheme(theme == AppTheme::Dark ? true : false);
+}
+
+void MainWindow::onActionDark()  { applyTheme(AppTheme::Dark);  saveSettings(); }
+void MainWindow::onActionLight() { applyTheme(AppTheme::Light); saveSettings(); }
+
+// ── Language ──────────────────────────────────────────────────────────────────
+
+void MainWindow::onActionEnglish() {
+    loadLanguage("en");
+    saveSettings();
+}
+void MainWindow::onActionUkrainian() {
+    loadLanguage("uk");
+    saveSettings();
+}
+
+// ── Settings persistence ──────────────────────────────────────────────────────
+
+void MainWindow::saveSettings()
+{
+    QSettings s("HSET", "GeneratorClient");
+    s.setValue("theme",    m_currentTheme == AppTheme::Dark ? "dark" : "light");
+    s.setValue("language", ui->actionEnglish->isChecked() ? "en" : "uk");
+    s.setValue("page",     ui->stackedWidget->currentIndex());
+}
+
+void MainWindow::loadSettings()
+{
+    QSettings s("HSET", "GeneratorClient");
+
+    const QString theme = s.value("theme", "dark").toString();
+    applyTheme(theme == "dark" ? AppTheme::Dark : AppTheme::Light);
+
+    const QString locale = s.value("language", "en").toString();
+    loadLanguage(locale);
+
+    const int page = s.value("page", 1).toInt();
+    ui->stackedWidget->setCurrentIndex(page);
+}
+
+void MainWindow::onTrafficPlayerTab() {
+    QMouseEvent* event = new QMouseEvent(
+        QEvent::MouseButtonPress,
+        ui->menubar->mapFromGlobal(QCursor::pos()),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::postEvent(ui->menubar, event);
+    ui->stackedWidget->setCurrentIndex(0);
+    ui->menuTraffic_Player->hide();
+}
+
+void MainWindow::onPacketConstructorTab() {
+    QMouseEvent* event = new QMouseEvent(
+        QEvent::MouseButtonPress,
+        ui->menubar->mapFromGlobal(QCursor::pos()),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::postEvent(ui->menubar, event);
+    ui->stackedWidget->setCurrentIndex(1);
+    ui->menuPacket_Constructor->hide();
+}
+
+void MainWindow::onHelpPageTab() {
+    QMouseEvent* event = new QMouseEvent(
+        QEvent::MouseButtonPress,
+        ui->menubar->mapFromGlobal(QCursor::pos()),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier
+    );
+    QApplication::postEvent(ui->menubar, event);
+
+}
+
+void MainWindow::loadLanguage(const QString &locale)
+{
+    // Remove old translator first, then load new one
+    qApp->removeTranslator(&m_translator);
+
+    QString translationsDir = QString::fromStdString(std::filesystem::current_path() / "Translations");
+
+
+    if (locale != "en") {  // English is the source language — no .qm needed
+        if (m_translator.load(translationsDir + "/TrafficGenerator_" + locale + ".qm")) {
+            qApp->installTranslator(&m_translator);
+        } else {
+            std::cout << "Failde to load\n";
+        }
+    }
+    // installTranslator / removeTranslator automatically fires QEvent::LanguageChange
+    // to all widgets, which triggers retranslateUi() via changeEvent()
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::LanguageChange) {
+        ui->retranslateUi(this);
+        ui->constructor->changeEvent(event);
+        ui->player->changeEvent(event);
+        helpPage->changeEvent(event);
+    }
+    QMainWindow::changeEvent(event);
+}
+
+// void MainWindow::setupSettings() {
+//     std::cout << "[MainWindow::setupSettings] Setting up settings manager" << std::endl;
+//     bool loaded = m_settingsManager.load();
+//     if (!loaded) {
+//         m_settingsManager.setTheme("dark"); // Default theme
+//         m_settingsManager.setLanguage("uk"); // Default language
+//         m_settingsManager.save();
+//     }
+//     // Apply language from settings
+//     QString lang = m_settingsManager.language(); // e.g., "uk", "en"
+//     QTranslator* translator = new QTranslator(this); // use 'this' for memory management
+//     if (translator->load("Translations/TrafficGenerator_" + lang + ".qm")) {
+//         qApp->installTranslator(translator);
+//     } else {
+//         std::cerr << "Could not load translation for language: " << lang.toStdString() << std::endl;
+//         delete translator;
+//     }
+//     translateUI();
+//     // Apply theme from settings
+//     emit onThemeChanged(m_settingsManager.theme());
+// }
+
+
 //
 // void MainWindow::onStartButtonClicked() {
 //     std::cout << "[MainWindow::onStartButtonClicked] Start/Stop button clicked" << std::endl;
