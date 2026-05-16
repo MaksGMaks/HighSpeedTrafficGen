@@ -6,6 +6,9 @@
 #include <thread>
 #include <vector>
 
+#include <fstream>
+#include <iostream>
+
 #include <QObject>
 
 #include "../../../../third-party/nlohmann_json/nlohmann/json.hpp"

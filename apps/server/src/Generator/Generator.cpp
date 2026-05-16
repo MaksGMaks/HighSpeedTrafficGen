@@ -2,7 +2,7 @@
 
 #include "../../../../libs/common/include/generator_values.hpp"
 
-Generator::Generator(QObject *parent)
+Generator::Generator()
 : isRunning(false)
 , isPaused(false) {
     statQueue = new statisticQueue();

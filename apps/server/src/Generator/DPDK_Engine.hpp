@@ -16,4 +16,4 @@
 bool initialize_dpdk();
 bool isHugepageMounted(const std::string& mountPoint);
 
-void checkDPDKSupport(std::vector<interfaceModes>& interfaces);
+// void checkDPDKSupport(std::vector<interfaceModes>& interfaces);

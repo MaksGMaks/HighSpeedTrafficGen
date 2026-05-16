@@ -9,6 +9,8 @@
 #include <rte_ethdev.h>
 #include <rte_mempool.h>
 
+#include "Network/NetworkManager.hpp"
+
 #define DEFAULT_DPDK_ARGC 3
 static char* DEFAULT_DPDK_ARGV[] = {(char*)"-l", (char*)"0", (char*)"--huge-dir=/mnt/huge"};
 
@@ -57,5 +59,7 @@ int main(int argc, char** argv) {
     //     std::cerr << "Unknown argument. Terminating...\n";
     //     return 1;
     // }
+
+    NetworkManager* m_manager = new NetworkManager(54444);
     return 0;
 }

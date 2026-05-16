@@ -4,6 +4,12 @@
 #include <mutex>
 #include <queue>
 
+#include <sys/socket.h>   // AF_INET, SOCK_DGRAM, socket()
+#include <sys/ioctl.h>    // ioctl(), SIOCGIFMTU
+#include <net/if.h>       // ifreq, IFNAMSIZ
+#include <cstring>        // std::memset, std::strncpy
+#include <unistd.h>       // close()
+
 namespace generator {
     struct statisticData {
         uint64_t packetsSent{};

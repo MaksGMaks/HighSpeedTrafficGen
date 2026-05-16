@@ -1,5 +1,7 @@
 #include "GeneratorPlayer.hpp"
 
+#include "../../../../../../libs/common/include/generator_values.hpp"
+
 GeneratorPlayer::GeneratorPlayer(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::GeneratorPlayer)
@@ -22,15 +24,34 @@ GeneratorPlayer::~GeneratorPlayer() { delete ui; }
 
 // ── Settings read ─────────────────────────────────────────────────────────────
 
-PlayerSettings GeneratorPlayer::settings() const
+PcapParams::PlayerSettings GeneratorPlayer::settings() const
 {
-    PlayerSettings s;
-    s.filePath   = ui->filePathEdit->text();
+    PcapParams::PlayerSettings s;
+    s.filePath   = ui->filePathEdit->text().toStdString();
     s.startPacket= ui->startOffsetSpin->value();
     s.endPacket  = ui->endOffsetSpin->value();
     s.loop       = ui->loopCheck->isChecked();
     s.loopCount  = ui->loopCountSpin->value();
-    s.speedMode  = ui->speedModeCombo->currentIndex();
+    switch (ui->speedModeCombo->currentIndex()) {
+    case 0:
+        s.speedMode = PcapParams::SpeedMode::Original;
+        break;
+
+    case 1:
+        s.speedMode = PcapParams::SpeedMode::Multiplier;
+        break;
+
+    case 2:
+        s.speedMode = PcapParams::SpeedMode::Fixed;
+        break;
+
+    case 3:
+        s.speedMode = PcapParams::SpeedMode::Max;
+        break;
+
+    default:
+        break;
+    }
     s.speedMult  = ui->speedMultSpin->value();
     s.fixedRate  = ui->fixedRateSpin->value();
     return s;

@@ -29,24 +29,24 @@ bool isHugepageMounted(const std::string& mountPoint) {
     return false;
 }
 
-void checkDPDKSupport(std::vector<interfaceModes>& interfaces) {
-    int nb_ports = rte_eth_dev_count_avail();
-    for (int i = 0; i < nb_ports; i++) {
-        rte_eth_dev_info dev_info;
-        rte_eth_dev_info_get(i, &dev_info);
-        if (dev_info.device) {
-            std::string ifname = rte_dev_name(dev_info.device);
-            auto it = std::find_if(interfaces.begin(), interfaces.end(), [&ifname](auto& i) {
-                return i.interfaceName == ifname;
-            });
-
-            if (it != interfaces.end()) {
-                it->dpdk_support = true;
-            } else {
-                interfaceModes intr(ifname);
-                intr.dpdk_support = true;
-                interfaces.push_back(intr);
-            }
-        }
-    }
-}
+// void checkDPDKSupport(std::vector<interfaceModes>& interfaces) {
+//     int nb_ports = rte_eth_dev_count_avail();
+//     for (int i = 0; i < nb_ports; i++) {
+//         rte_eth_dev_info dev_info;
+//         rte_eth_dev_info_get(i, &dev_info);
+//         if (dev_info.device) {
+//             std::string ifname = rte_dev_name(dev_info.device);
+//             auto it = std::find_if(interfaces.begin(), interfaces.end(), [&ifname](auto& i) {
+//                 return i.interfaceName == ifname;
+//             });
+//
+//             if (it != interfaces.end()) {
+//                 it->dpdk_support = true;
+//             } else {
+//                 interfaceModes intr(ifname);
+//                 intr.dpdk_support = true;
+//                 interfaces.push_back(intr);
+//             }
+//         }
+//     }
+// }

@@ -17,7 +17,7 @@ public:
     Generator();
     ~Generator();
 
-    statisticQueue* getQueueP();
+    generator::statisticQueue* getQueueP();
 
      // Control method
      void doPause();                                     // pause thread's work but don't stop it

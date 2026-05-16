@@ -112,11 +112,11 @@ message(STATUS "DPDK found")
 
 # Project sources
 set(ALL_SOURCES
-#  ${SERVER_SRC}/Generator/common_generator.cpp
-#  ${SERVER_SRC}/Generator/DPDK_Engine.cpp
-#  ${SERVER_SRC}/Generator/Generator.cpp
+  ${SERVER_SRC}/Generator/common_generator.cpp
+  ${SERVER_SRC}/Generator/DPDK_Engine.cpp
+  ${SERVER_SRC}/Generator/Generator.cpp
 #  ${SERVER_SRC}/Generator/PFRING_Engine.cpp
-#  ${SERVER_SRC}/Network/NetworkManager.cpp
+  ${SERVER_SRC}/Network/NetworkManager.cpp
 #  ${SERVER_SRC}/UIUpdate/UIUpdater.cpp
 )
 
@@ -131,6 +131,13 @@ set(BOOST_DIR "${CMAKE_SOURCE_DIR}/third-party/boost")
 if(EXISTS ${BOOST_DIR})
   target_include_directories(${PROJECT_NAME} PRIVATE ${BOOST_DIR})
 #  target_include_directories(${PROJECT_NAME}Manager PRIVATE ${BOOST_DIR})
+endif()
+
+# Add Boost
+set(NLOHMANN_DIR "${CMAKE_SOURCE_DIR}/third-party/nlohmann_json")
+if(EXISTS ${NLOHMANN_DIR})
+  target_include_directories(${PROJECT_NAME} PRIVATE ${NLOHMANN_DIR})
+  #  target_include_directories(${PROJECT_NAME}Manager PRIVATE ${BOOST_DIR})
 endif()
 
 set(PCAPPP_DIR "${CMAKE_SOURCE_DIR}/third-party/pcapplusplus")

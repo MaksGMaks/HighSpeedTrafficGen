@@ -1,7 +1,5 @@
 #include "NetworkManager.hpp"
 
-#include <fstream>
-
 // ── Ctor / Dtor ───────────────────────────────────────────────────────────────
 
 NetworkManager::NetworkManager(QObject *parent)
@@ -20,7 +18,7 @@ NetworkManager::~NetworkManager()
         boost::system::error_code ec;
         m_socket.cancel(ec);
         m_socket.close(ec);
-        m_workGuard.reset();
+        m_workGuard.reset();    // lets io_context::run() return
     });
     if (m_ioThread.joinable())
         m_ioThread.join();
@@ -36,33 +34,40 @@ void NetworkManager::connect(const std::string &ip, uint16_t port)
             m_socket.close(ec);
         }
 
-        m_socket   = boost::asio::ip::tcp::socket(m_ioContext);
+        m_socket   = boost::asio::ip::tcp::socket  (m_ioContext);
         m_resolver = boost::asio::ip::tcp::resolver(m_ioContext);
 
-        boost::system::error_code resolveEc;
-        boost::asio::ip::tcp::resolver::results_type endpoints =
-            m_resolver.resolve(ip, std::to_string(port), resolveEc);
-
-        if (resolveEc) {
-            std::cerr << "[C][NM] Resolve failed: " << resolveEc.message() << "\n";
-            return;
-        }
-
-        boost::asio::async_connect(m_socket, endpoints,
+        // BUG FIX: synchronous resolve blocks the io_context thread.
+        // Use async_resolve so the thread stays free while DNS resolves.
+        m_resolver.async_resolve(ip, std::to_string(port),
             [this](boost::system::error_code ec,
-                   const boost::asio::ip::tcp::endpoint &ep)
+                   boost::asio::ip::tcp::resolver::results_type endpoints)
             {
                 if (ec) {
-                    std::cerr << "[C][NM] Connect failed: " << ec.message() << "\n";
+                    std::cerr << "[C][NM] Resolve failed: " << ec.message() << "\n";
+                    emit disconnectNotify();
                     return;
                 }
 
-                std::cout << "[C][NM] Connected to " << ep << "\n";
-                m_running = true;
-                m_socket.set_option(boost::asio::ip::tcp::no_delay(true));
+                boost::asio::async_connect(m_socket, endpoints,
+                    [this](boost::system::error_code ec,
+                           const boost::asio::ip::tcp::endpoint &ep)
+                    {
+                        if (ec) {
+                            std::cerr << "[C][NM] Connect failed: " << ec.message() << "\n";
+                            emit disconnectNotify();
+                            return;
+                        }
 
-                startReadLoop();
-                emit connected();
+                        std::cout << "[C][NM] Connected to " << ep << "\n";
+                        m_running.store(true, std::memory_order_relaxed);
+
+                        boost::system::error_code optEc;
+                        m_socket.set_option(boost::asio::ip::tcp::no_delay(true), optEc);
+
+                        startReadLoop();
+                        emit connected();
+                    });
             });
     });
 }
@@ -71,11 +76,14 @@ void NetworkManager::disconnect()
 {
     boost::asio::post(m_ioContext, [this]{
         if (!m_socket.is_open()) return;
-        m_running = false;
+
+        m_running.store(false, std::memory_order_relaxed);
+
         boost::system::error_code ec;
         m_socket.cancel(ec);
         m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
         m_socket.close(ec);
+
         std::cout << "[C][NM] Disconnected\n";
         emit disconnectNotify();
     });
@@ -83,16 +91,20 @@ void NetworkManager::disconnect()
 
 void NetworkManager::handleDisconnect(const boost::system::error_code &ec)
 {
-    if (!m_running) return;
+    // Guard against re-entry: disconnect() or a prior read/write error
+    // may have already cleaned up.
+    if (!m_running.load(std::memory_order_relaxed)) return;
+
     std::cerr << "[C][NM] Lost connection: " << ec.message() << "\n";
-    m_running = false;
+    m_running.store(false, std::memory_order_relaxed);
+
     boost::system::error_code closeEc;
     m_socket.close(closeEc);
+
     emit disconnectNotify();
 }
 
-// ── Read loop — same accumulator strategy as server ───────────────────────────
-// No length framing on the wire: accumulate until nlohmann accepts the JSON.
+// ── Read loop ─────────────────────────────────────────────────────────────────
 
 void NetworkManager::startReadLoop()
 {
@@ -111,32 +123,41 @@ void NetworkManager::doRead()
 
             m_readAccumulator.append(m_readBuf.data(), len);
 
-            // Try to parse accumulated bytes
-            nlohmann::json doc = nlohmann::json::parse(
-                m_readAccumulator, nullptr, /*exceptions*/false);
+            // BUG FIX: original called doRead() unconditionally after parse,
+            // causing a second async_read_some to be posted even when one was
+            // already in flight from the re-entry inside the while loop.
+            // Correct pattern: consume all complete messages, then post
+            // exactly one new doRead() at the end.
+            while (!m_readAccumulator.empty())
+            {
+                nlohmann::json doc = nlohmann::json::parse(
+                    m_readAccumulator, nullptr, /*exceptions=*/false);
 
-            if (!doc.is_discarded()) {
+                if (doc.is_discarded())
+                    break;  // incomplete — wait for more data
+
+                // TODO: track actual consumed bytes for true multi-message
+                // streams (same caveat as server side).
                 m_readAccumulator.clear();
                 handleMessage(doc);
             }
-            // else: incomplete — keep reading
 
-            doRead();
+            doRead();  // exactly one re-arm per completion
         });
 }
 
 void NetworkManager::handleMessage(const nlohmann::json &doc)
 {
     if (!doc.is_array() || doc.empty()) {
-        std::cerr << "[C][NM] Expected JSON array\n";
+        std::cerr << "[C][NM] Expected non-empty JSON array\n";
         return;
     }
 
     const nlohmann::json &obj = doc.at(0);
 
-    // ── Device info (first message after connect) ──────────────────────────
+    // ── Device info (first message after connect) ─────────────────────────
     if (obj.contains(jsonHeaders::InterfaceName)) {
-
+        // TODO: parse and expose interface capabilities if the UI needs them.
         emit receiverJSON();
         return;
     }
@@ -153,7 +174,7 @@ void NetworkManager::handleMessage(const nlohmann::json &doc)
         }
     }
 
-    // ── Stat update ───────────────────────────────────────────────────────
+    // ── Stat frame ────────────────────────────────────────────────────────
     if (obj.contains(jsonHeaders::Data::Key)) {
         jsonHeaders::receivedData d{};
         d.BPS         = std::stoull(obj.value(jsonHeaders::Data::BPS,         std::string("0")));
@@ -169,11 +190,13 @@ void NetworkManager::handleMessage(const nlohmann::json &doc)
     std::cerr << "[C][NM] Unrecognised message: " << doc.dump() << "\n";
 }
 
-// ── Write queue ───────────────────────────────────────────────────────────────
+// ── Write queue (io_context thread only) ──────────────────────────────────────
 
 void NetworkManager::postSend(const nlohmann::json &payload)
 {
+    // Serialise on the caller's thread, then hand ownership to the io thread.
     auto frame = std::make_shared<std::string>(payload.dump());
+
     boost::asio::post(m_ioContext, [this, frame]{
         m_writeQueue.push_back(frame);
         if (!m_writing)
@@ -191,7 +214,7 @@ void NetworkManager::doSendNext()
     boost::asio::async_write(
         m_socket,
         boost::asio::buffer(*frame),
-        [this, frame](boost::system::error_code ec, std::size_t)
+        [this, frame](boost::system::error_code ec, std::size_t /*sent*/)
         {
             if (ec) { handleDisconnect(ec); return; }
             m_writeQueue.erase(m_writeQueue.begin());
@@ -203,6 +226,7 @@ void NetworkManager::doSendNext()
 
 void NetworkManager::sendFileAsync(const std::string &path)
 {
+    // Called from io_context thread (via boost::asio::post in startGenerator).
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         std::cerr << "[C][NM] Cannot open file: " << path << "\n";
@@ -215,8 +239,6 @@ void NetworkManager::sendFileAsync(const std::string &path)
 
     std::vector<uint8_t> encrypted = encryptXor(raw);
 
-    // Wrap encrypted bytes as base64 string inside a JSON envelope
-    // so it stays valid JSON on the wire
     nlohmann::json envelope = nlohmann::json::array();
     envelope.push_back({
         { "FILE_DATA", nlohmann::json::binary(encrypted) }
@@ -239,34 +261,27 @@ std::vector<uint8_t> NetworkManager::encryptXor(const std::vector<uint8_t> &data
 
 void NetworkManager::startGenerator(const genParams &params)
 {
-    if (!m_running) return;
-
-    nlohmann::json obj;
-    obj[jsonHeaders::Type]                       = jsonHeaders::REQUEST;
-    obj[jsonHeaders::Command]                    = jsonHeaders::START;
-    obj[jsonHeaders::Parameters::Mode]           = std::to_string(params.mode);
-    obj[jsonHeaders::Parameters::Time]           = std::to_string(params.time);
-    obj[jsonHeaders::Parameters::Speed]          = std::to_string(params.speed);
-    obj[jsonHeaders::Parameters::BurstSize]      = std::to_string(params.burstSize);
-    obj[jsonHeaders::Parameters::PackSize]       = std::to_string(params.packSize);
-    obj[jsonHeaders::Parameters::PacketPattern]  = std::to_string(params.packetPattern);
-    obj[jsonHeaders::Parameters::FileSend]       = params.fileSend;
-    obj[jsonHeaders::Parameters::Copies]         = std::to_string(params.copies);
-    obj[jsonHeaders::Parameters::TotalSend]      = std::to_string(params.totalSend);
+    if (!m_running.load(std::memory_order_relaxed)) return;
 
     nlohmann::json arr = nlohmann::json::array();
-    arr.push_back(obj);
+    arr.push_back({
+        { jsonHeaders::Type,    static_cast<int>(jsonHeaders::TypeC::Request)         },
+        { jsonHeaders::Command, static_cast<int>(jsonHeaders::CommandC::Start)        },
+        { "params",             params }   // to_json(genParams) fires automatically
+    });
     postSend(arr);
 
-    if (params.fileSend && !params.filePath.empty()) {
+    if (params.mode == GeneratorMode::PcapPlayer &&
+        !params.playerSettings.filePath.empty())
+    {
         boost::asio::post(m_ioContext,
-            [this, path = params.filePath]{ sendFileAsync(path); });
+            [this, path = params.playerSettings.filePath]{ sendFileAsync(path); });
     }
 }
 
 void NetworkManager::pauseGenerator()
 {
-    if (!m_running) return;
+    if (!m_running.load(std::memory_order_relaxed)) return;
     nlohmann::json arr = nlohmann::json::array();
     arr.push_back({
         { jsonHeaders::Type,    jsonHeaders::REQUEST },
@@ -277,7 +292,7 @@ void NetworkManager::pauseGenerator()
 
 void NetworkManager::resumeGenerator()
 {
-    if (!m_running) return;
+    if (!m_running.load(std::memory_order_relaxed)) return;
     nlohmann::json arr = nlohmann::json::array();
     arr.push_back({
         { jsonHeaders::Type,    jsonHeaders::REQUEST },
@@ -288,7 +303,7 @@ void NetworkManager::resumeGenerator()
 
 void NetworkManager::stopGenerator()
 {
-    if (!m_running) return;
+    if (!m_running.load(std::memory_order_relaxed)) return;
     nlohmann::json arr = nlohmann::json::array();
     arr.push_back({
         { jsonHeaders::Type,    jsonHeaders::REQUEST },

@@ -595,7 +595,6 @@ void ConstructorPage::pcapReaderThread(const QString path)
     QMetaObject::invokeMethod(this, [this, packets]() {
         onPcapReadFinished(packets, true, {});
     }, Qt::QueuedConnection);
-
     m_readerRunning = false;
 }
 

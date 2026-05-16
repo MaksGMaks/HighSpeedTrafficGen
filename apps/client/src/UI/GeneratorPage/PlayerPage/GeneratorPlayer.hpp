@@ -4,20 +4,11 @@
 #include <QFileInfo>
 #include <QNetworkInterface>
 
+#include  "generator_values.hpp"
+
 #include "ui_GeneratorPlayer.h"
 
 namespace Ui { class GeneratorPlayer; }
-
-struct PlayerSettings {
-    QString filePath;
-    int     startPacket  = 1;
-    int     endPacket    = 0;    // 0 = last
-    bool    loop         = false;
-    int     loopCount    = 1;    // 1 = play once
-    int     speedMode    = 0;    // 0=original, 1=multiplier, 2=fixed, 3=max
-    double  speedMult    = 1.0;
-    int     fixedRate    = 1000; // pkt/s
-};
 
 class GeneratorPlayer : public QWidget {
     Q_OBJECT
@@ -26,7 +17,7 @@ public:
     ~GeneratorPlayer();
 
     // Read current UI state
-    PlayerSettings settings() const;
+    PcapParams::PlayerSettings settings() const;
 
     // Update file info fields from outside (e.g. after reading pcap header)
     void setFileInfo(int totalPackets, qint64 totalBytes,
@@ -36,7 +27,7 @@ public:
     void changeEvent(QEvent *event) override;
 
 signals:
-    void settingsChanged(PlayerSettings settings);
+    void settingsChanged(PcapParams::PlayerSettings settings);
 
 private slots:
     void onBrowseClicked();
