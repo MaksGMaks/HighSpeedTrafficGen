@@ -10,10 +10,10 @@ GeneratorParams::GeneratorParams(QWidget *parent)
 
     connect(ui->protoModeCombo, &QComboBox::currentIndexChanged,
             this, &GeneratorParams::onProtoModeChanged);
-    connect(ui->applyBtn, &QPushButton::clicked, this, &GeneratorParams::onApply);
-    connect(ui->resetBtn, &QPushButton::clicked, this, &GeneratorParams::onReset);
+    // connect(ui->applyBtn, &QPushButton::clicked, this, &GeneratorParams::onApply);
+    // connect(ui->resetBtn, &QPushButton::clicked, this, &GeneratorParams::onReset);
 
-    ui->btnLayout->setContentsMargins(10, 10, 10, 10);
+    // ui->btnLayout->setContentsMargins(10, 10, 10, 10);
     ui->protoRandomLayout->setContentsMargins(0, 0, 0, 0);
 
     onProtoModeChanged(0);
@@ -199,8 +199,8 @@ void GeneratorParams::resetToDefaults()
     setLaw(GenLaw::makeDefaultLaw());
 }
 
-void GeneratorParams::onApply() { emit lawApplied(law()); }
-void GeneratorParams::onReset() { resetToDefaults(); }
+// void GeneratorParams::onApply() { emit lawApplied(law()); }
+// void GeneratorParams::onReset() { resetToDefaults(); }
 
 void GeneratorParams::changeEvent(QEvent *event) {
     if (event->type() == QEvent::LanguageChange) {

@@ -6,12 +6,21 @@
 
 #include "ServerSelect.hpp"
 
-ServerSelect::ServerSelect(QWidget *parent)
+#include "../../../../build/apps/client/HSET_GeneratorClient_autogen/include/ui_ServerSelect.h"
+
+ServerSelect::ServerSelect(NetworkManager* manager, QWidget *parent)
 : QMainWindow(parent)
 , ui(new Ui::ServerSelect) {
     ui->setupUi(this);
+    m_manager = manager;
+    connect(ui->connectBtn, &QPushButton::clicked, this, &ServerSelect::onConnectBtnClicked);
 }
 
 ServerSelect::~ServerSelect() {
     delete ui;
+}
+
+void ServerSelect::onConnectBtnClicked() {
+    if (ui->portEdit->text().isEmpty() || ui->ipEdit->text().isEmpty()) return;
+    m_manager->connect(ui->ipEdit->text().toStdString(), ui->portEdit->text().toUShort());
 }

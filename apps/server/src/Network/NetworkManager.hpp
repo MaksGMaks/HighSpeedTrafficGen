@@ -18,7 +18,7 @@ public:
     std::function<void(const std::string &ip)> onClientConnected;
     std::function<void()>                      onClientDisconnected;
 
-    explicit NetworkManager(uint16_t port);
+    explicit NetworkManager(uint16_t port, uint16_t devID);
     ~NetworkManager();
 
     // Blocks until the client disconnects or an error occurs.
@@ -32,6 +32,7 @@ public:
 
 private:
     void handleCommand  (const nlohmann::json &obj);
+    void handleFileData (const nlohmann::json &obj);
     genParams parseParams(const nlohmann::json &obj) const;
 
     void writerLoop();
@@ -43,7 +44,21 @@ private:
     boost::asio::ip::tcp::socket   m_socket;
 
     // ── Generator ─────────────────────────────────────────────────────────────
-    Generator m_generator;
+    Generator* m_generator;
+
+    // ── PCAP buffer (populated by FILE_DATA messages) ─────────────────────────
+    std::vector<uint8_t> m_pcapBuffer;
+    std::vector<uint8_t> m_pcapAssembly;
+    int                  m_expectedChunks{0};
+    int                  m_receivedChunks{0};
+    genParams            m_pendingParams;   // saved from START, applied once file arrives
+    bool                 m_waitingForFile{false};
+
+    // ── Stat forwarder ────────────────────────────────────────────────────────────
+    void statLoop();   // add to private
+
+    std::thread  m_statThread;
+    bool         m_statRunning{false};
 
     // ── Write queue ───────────────────────────────────────────────────────────
     std::queue<std::string> m_writeQueue;

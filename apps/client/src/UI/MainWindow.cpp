@@ -10,6 +10,18 @@ MainWindow::MainWindow(QWidget *parent)
     std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
     ui->setupUi(this);
     helpPage = new HelpPage(this);
+    m_manager = new NetworkManager();
+    m_serverSelect = new ServerSelect(m_manager);
+
+    connect(m_manager, &NetworkManager::connected, this, &MainWindow::showMainWindow);
+    connect(m_manager, &NetworkManager::disconnectNotify, this, &MainWindow::showServerConnect);
+
+    connect(ui->player, &GeneratorPage::startGeneration, m_manager, &NetworkManager::startGenerator);
+    connect(ui->player, &GeneratorPage::stopGeneration, m_manager, &NetworkManager::stopGenerator);
+    connect(ui->player, &GeneratorPage::pauseGeneration, m_manager, &NetworkManager::pauseGenerator);
+    connect(ui->player, &GeneratorPage::resumeGeneration, m_manager, &NetworkManager::resumeGenerator);
+
+    connect(m_manager, &NetworkManager::statsReceived, ui->player, &GeneratorPage::onStatsReceived);
 
     setupMenuBar();
     loadSettings();
@@ -28,6 +40,16 @@ MainWindow::~MainWindow() {
     std::cout << "[MainWindow::~MainWindow] Destroying MainWindow" << std::endl;
     saveSettings();
     delete ui;
+}
+
+void MainWindow::showServerConnect() {
+    this->hide();
+    m_serverSelect->show();
+}
+
+void MainWindow::showMainWindow() {
+    m_serverSelect->hide();
+    this->show();
 }
 
 void MainWindow::setupMenuBar()

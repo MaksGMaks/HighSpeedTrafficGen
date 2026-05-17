@@ -17,6 +17,7 @@ namespace generator {
         uint64_t txErrors{};
         uint64_t totalBytesSent{};
 
+        statisticData() {}
         statisticData(uint64_t packets, uint64_t bytes, uint64_t errors, uint64_t total)
             : packetsSent(packets),
               bytesSent(bytes),

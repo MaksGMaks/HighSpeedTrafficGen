@@ -48,6 +48,8 @@
 #include "GeneratorPage/GeneratorPage.hpp"
 #include "UInt64Validator.hpp"
 
+#include "ServerSelect.hpp"
+
 // #include "Generator/common_generator.hpp"
 // #include "Generator/Generator.hpp"
 
@@ -81,6 +83,10 @@ public:
     explicit MainWindow(QWidget *parent = nullptr); //, std::vector<interfaceModes> interfases
     ~MainWindow() override;
 
+public slots:
+    void showServerConnect();
+    void showMainWindow();
+
 private slots:
     void onActionDark();
     void onActionLight();
@@ -102,4 +108,8 @@ private:
     HelpPage *helpPage;
     QTranslator m_translator;
     AppTheme m_currentTheme = AppTheme::Dark;
+
+    ServerSelect* m_serverSelect;
+    NetworkManager* m_manager;
+
 };

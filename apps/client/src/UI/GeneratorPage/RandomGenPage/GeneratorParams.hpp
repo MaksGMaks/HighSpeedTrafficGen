@@ -25,8 +25,8 @@ signals:
 
 private slots:
     void onProtoModeChanged(int idx);
-    void onApply();
-    void onReset();
+    // void onApply();
+    // void onReset();
 
 private:
     void setupRows();

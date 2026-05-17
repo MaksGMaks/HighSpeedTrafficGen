@@ -4,6 +4,8 @@
 #include "ui_GeneratorPage.h"
 #include "StatisticWindow.hpp"
 
+#include <QPushButton>
+
 namespace Ui {
 class GeneratorPage;
 }
@@ -17,6 +19,20 @@ public:
 
   void setDarkTheme(bool dark);
   void changeEvent(QEvent *event) override;
+
+public slots:
+  void onStatsReceived(const ServerStats &stats);
+
+signals:
+  void startGeneration(const genParams &params);
+  void stopGeneration();
+  void pauseGeneration();
+  void resumeGeneration();
+
+private slots:
+  void onStartBtnClicked();
+  void onStopBtnClicked();
+  void onPauseBtnClicked();
 
 private:
   Ui::GeneratorPage *ui;

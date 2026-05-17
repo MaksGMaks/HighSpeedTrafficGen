@@ -33,22 +33,29 @@ private:
     static QString formatBytes     (double Bps);
     static QString formatBits      (double Bps);
     static QString formatBytesTotal(quint64 bytes);
-    void           updateChart     (double bytesPerSec);
-    void           rescaleYAxis    ();
-    QString        autoScaleLabel  (double maxVal) const;
+    void           updateChart     (double bytesPerSec, double bitsPerSec);
 
     Ui::StatisticWindow *ui;
 
-    QChart      *m_chart       = nullptr;
-    QLineSeries *m_bytesSeries = nullptr;
-    QLineSeries *m_bitsSeries  = nullptr;
-    QValueAxis  *m_axisX       = nullptr;
-    QValueAxis  *m_axisY       = nullptr;
+    QChart      *m_chart        = nullptr;
+    QLineSeries *m_bytesSeries  = nullptr;
+    QLineSeries *m_bitsSeries   = nullptr;
+    QValueAxis  *m_axisX        = nullptr;
+    QValueAxis  *m_axisYBytes   = nullptr;   // left  — B/s
+    QValueAxis  *m_axisYBits    = nullptr;   // right — bit/s
 
     static constexpr int kWindowSecs = 30;
 
-    // Previous snapshot for delta computation
-    ServerStats m_prevStats;
-    bool        m_hasPrev    = false;
-    double      m_timeCursor = 0.0;
+    ServerStats    m_prevStats;
+    bool           m_hasPrev    = false;
+    double         m_timeCursor = 0.0;
+
+    // Wall-clock timer — used to compute dt independently of the stats struct
+    QElapsedTimer  m_elapsed;
+    bool           m_elapsedStarted = false;
+
+    // Current divisor applied to series data (1.0 / 1e3 / 1e6 / 1e9).
+    // Tracked so rescaleYAxes can rescale existing points when the unit tier changes.
+    double         m_byteDivisor = 1.0;
+    double         m_bitDivisor  = 1.0;
 };

@@ -409,7 +409,6 @@ inline void from_json(const nlohmann::json &j, GeneratorMode &v)
     { v = static_cast<GeneratorMode>(j.get<int>()); }
 
 struct genParams {
-    std::string   interfaceName{};
     GeneratorMode mode    = GeneratorMode::RandomLaw;
     uint32_t      time    = 0;
 
@@ -451,7 +450,6 @@ constexpr int PAUSE   = static_cast<int>(CommandC::Pause);
 constexpr int RESUME  = static_cast<int>(CommandC::Resume);
 constexpr int FINISH  = static_cast<int>(CommandC::Finish);
 
-constexpr const char *InterfaceName     = "interfaceName";
 constexpr const char *DpdkSupported     = "dpdkSupported";
 constexpr const char *PfRingSupported   = "pf_ringSupported";
 constexpr const char *PfRingZcSupported = "pf_ring_zcSupported";
@@ -476,15 +474,6 @@ namespace Data {
 namespace File {
     constexpr const char *Key = "FILE_DATA";
 }
-
-struct receivedData {
-    uint64_t pps         = 0;
-    uint64_t bps         = 0;
-    uint64_t BPS         = 0;
-    int64_t  time        = 0;
-    uint64_t totalCopies = 0;
-    uint64_t totalSend   = 0;
-};
 
 } // namespace jsonHeaders
 

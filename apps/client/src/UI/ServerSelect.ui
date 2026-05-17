@@ -90,32 +90,15 @@
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="portBox"/>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="directCon">
-        <property name="text">
-         <string>Direct connection</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QLineEdit" name="portEdit">
         <property name="enabled">
-         <bool>false</bool>
+         <bool>true</bool>
         </property>
         <property name="inputMask">
          <string>xxxxx</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="searchBtn">
-        <property name="text">
-         <string>Search</string>
         </property>
        </widget>
       </item>

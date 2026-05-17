@@ -24,10 +24,8 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
 
-    // ServerSelect* serverSelect = new ServerSelect();
-    // serverSelect->show();
     MainWindow* mainWindow = new MainWindow();
-    mainWindow->show();
+    mainWindow->showServerConnect();
 
     return app.exec();
 }
