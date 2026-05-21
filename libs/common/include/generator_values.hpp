@@ -430,11 +430,32 @@ struct ServerStats {
     int64_t  timestampMs = 0;
 };
 
+enum class MessageSeverity : uint8_t {
+    Info    = 0,
+    Warning = 1,
+    Error   = 2
+};
+
+struct generatorMessage {
+    MessageSeverity severity = MessageSeverity::Info;
+    std::string     text;
+
+    generatorMessage() = default;
+    generatorMessage(MessageSeverity sev, std::string msg)
+        : severity(sev), text(std::move(msg)) {}
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // JSON keys
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace jsonHeaders {
+
+namespace Message {
+constexpr const char* Key      = "MSG";
+constexpr const char* Severity = "severity";
+constexpr const char* Text     = "text";
+}
 
 enum class TypeC    : int { Accept = 0, Failed = 1, Request = 2, Response = 3, File = 4 };
 enum class CommandC : int { Start = 0, Pause = 1, Resume = 2, Finish = 3 };

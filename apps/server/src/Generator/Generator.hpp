@@ -17,7 +17,6 @@
 #include <rte_icmp.h>
 
 #include "common_generator.hpp"
-#include "generator_values.hpp"
 
 class Generator {
 public:
@@ -25,6 +24,7 @@ public:
   ~Generator();
 
   generator::statisticQueue* getQueueP();
+  generator::messageQueue* getMSGQueueP();
 
   void doStart(const genParams& params);
   void doStartFromBuffer(const genParams& params,
@@ -49,6 +49,7 @@ private:
   void recordStats(uint64_t packets, uint64_t bytes);
 
   generator::statisticQueue* statQueue = nullptr;
+  generator::messageQueue* msgQueue = nullptr;
   genParams   m_params{};
   std::vector<uint8_t>   m_pcapData;
   uint16_t    m_portId;

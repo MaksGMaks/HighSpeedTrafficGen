@@ -15,38 +15,13 @@
 #include <vector>
 
 #include <QApplication>
-#include <QChart>
-#include <QChartView>
-#include <QComboBox>
-#include <QFileDialog>
-#include <QGroupBox>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QLineEdit>
-#include <QLineSeries>
-#include <QLocale>
-#include <QMainWindow>
-#include <QMenu>
-#include <QMenuBar>
-#include <QMessageBox>
-#include <QPushButton>
-#include <QSpacerItem>
-#include <QTabWidget>
-#include <QThread>
-#include <QTime>
-#include <QTimeEdit>
 #include <QTranslator>
-#include <QVBoxLayout>
-#include <QValueAxis>
 
 #include "commonUI.hpp"
 #include "HelpPage.hpp"
-// #include "../SettingsManager.hpp"
-// #include "UIUpdate/UIUpdater.hpp"
 
 #include "ConstructorPage/ConstructorPage.hpp"
 #include "GeneratorPage/GeneratorPage.hpp"
-#include "UInt64Validator.hpp"
 
 #include "ServerSelect.hpp"
 
@@ -80,7 +55,7 @@ namespace Ui {
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget *parent = nullptr); //, std::vector<interfaceModes> interfases
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
 public slots:

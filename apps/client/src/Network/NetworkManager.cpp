@@ -244,6 +244,14 @@ void NetworkManager::handleMessage(const nlohmann::json &doc)
         return;
     }
 
+    if (obj.contains(jsonHeaders::Message::Key)) {
+        const auto sev = static_cast<MessageSeverity>(
+            obj.value(jsonHeaders::Message::Severity, 0));
+        const std::string text = obj.value(jsonHeaders::Message::Text, std::string{});
+        emit messageReceived(sev, QString::fromStdString(text));
+        return;
+    }
+
     std::cerr << "[C][NM] Unrecognised message: " << doc.dump() << "\n";
 }
 

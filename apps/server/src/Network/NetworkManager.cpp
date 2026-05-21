@@ -68,6 +68,9 @@ NetworkManager::~NetworkManager()
     if (m_statThread.joinable())
         m_statThread.join();
 
+    m_msgRunning = false;
+    if (m_msgThread.joinable())
+        m_msgThread.join();
     {
         std::lock_guard<std::mutex> lock(m_writeMutex);
         m_writerRunning = false;
@@ -138,6 +141,9 @@ int NetworkManager::listen()
     m_statRunning = true;
     m_statThread  = std::thread(&NetworkManager::statLoop, this);
 
+    m_msgRunning = true;
+    m_msgThread  = std::thread(&NetworkManager::msgLoop, this);
+
     // ── Read loop ─────────────────────────────────────────────────────────────
     std::string            accumulator;
     std::array<char, 4096> buf;
@@ -207,6 +213,10 @@ int NetworkManager::listen()
     m_statRunning = false;
     if (m_statThread.joinable())
         m_statThread.join();
+
+    m_msgRunning = false;
+    if (m_msgThread.joinable())
+        m_msgThread.join();
 
     {
         std::lock_guard<std::mutex> lock(m_writeMutex);
@@ -435,5 +445,36 @@ void NetworkManager::statLoop()
         s.timestampMs = nowMs;
 
         pushStats(s);   // existing method — serializes and enqueues for TX
+    }
+}
+
+// ── msgLoop ───────────────────────────────────────────────────────────────────
+void NetworkManager::msgLoop()
+{
+    generator::messageQueue* q = m_generator->getMSGQueueP();
+    if (!q) return;
+
+    while (m_msgRunning) {
+        generatorMessage gm;
+        bool got = false;
+
+        while (m_msgRunning) {
+            if (!q->queue.empty()) {
+                gm  = q->queue.front();
+                q->queue.pop();
+                got = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (!got) continue;
+
+        nlohmann::json arr = nlohmann::json::array();
+        arr.push_back({
+            { jsonHeaders::Message::Key,      jsonHeaders::Message::Key          },
+            { jsonHeaders::Message::Severity, static_cast<int>(gm.severity)     },
+            { jsonHeaders::Message::Text,     gm.text                            }
+        });
+        pushStats(arr);   // reuses the existing write queue
     }
 }

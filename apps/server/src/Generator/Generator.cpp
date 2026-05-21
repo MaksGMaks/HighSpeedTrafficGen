@@ -31,15 +31,18 @@ Generator::Generator(uint16_t port_id)
     : m_portId(port_id)
 {
     statQueue = new generator::statisticQueue();
+    msgQueue = new generator::messageQueue();
 }
 
 Generator::~Generator()
 {
     doStop();
     delete statQueue;
+    delete msgQueue;
 }
 
 generator::statisticQueue* Generator::getQueueP() { return statQueue; }
+generator::messageQueue* Generator::getMSGQueueP() { return msgQueue; }
 
 // ── Stats helper ──────────────────────────────────────────────────────────────
 
@@ -139,11 +142,15 @@ void Generator::doResume()
 void Generator::pushError(const std::string& msg)
 {
     std::cerr << "[Generator] ERROR: " << msg << "\n";
+    if (msgQueue)
+        msgQueue->queue.push({ MessageSeverity::Error, msg });
 }
 
 void Generator::pushWarning(const std::string& msg)
 {
-    std::cerr << "[Generator] WARN:  " << msg << "\n";
+    std::cerr << "[Generator] WARN: " << msg << "\n";
+    if (msgQueue)
+        msgQueue->queue.push({ MessageSeverity::Warning, msg });
 }
 
 static bool waitIfPaused(std::atomic<bool>& running,

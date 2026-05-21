@@ -34,6 +34,8 @@ signals:
     void connected        ();
     void disconnectNotify ();
     void statsReceived    (const ServerStats &stats);
+    void messageReceived  (MessageSeverity severity,
+                           const QString &text);        // new
     void commandAck       (jsonHeaders::CommandC cmd, bool accepted);
     void fileSendProgress (int percent);   // 0-100, emitted during chunked send
 

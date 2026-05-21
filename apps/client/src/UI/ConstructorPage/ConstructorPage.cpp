@@ -466,6 +466,10 @@ void ConstructorPage::onPcapReadProgress(int current, int total)
 // ── Finished slot ─────────────────────────────────────────────────────────────
 void ConstructorPage::onPcapReadFinished(QList<QPacket::Packet> *packets, bool ok, QString errorMsg)
 {
+    // Join the thread before touching any shared state
+    if (m_readerThread.joinable())
+        m_readerThread.join();
+
     if (m_progressDialog) {
         m_progressDialog->close();
         m_progressDialog->deleteLater();
@@ -475,9 +479,9 @@ void ConstructorPage::onPcapReadFinished(QList<QPacket::Packet> *packets, bool o
     ui->openFileBtn->setEnabled(true);
     ui->addBtn->setEnabled(true);
 
-    if (!ok) {
-        if (packets) delete packets;
-        QMessageBox::critical(this, "Error", errorMsg);
+    if (!ok || !packets) {
+        delete packets;
+        QMessageBox::critical(this, "Error", errorMsg.isEmpty() ? "Unknown error." : errorMsg);
         return;
     }
 
@@ -545,6 +549,14 @@ void ConstructorPage::pcapReaderThread(const QString path)
     read32s(thisZone);
     read32(sigFigs); read32(snapLen); read32(network);
 
+    if (f.error() != QFileDevice::NoError) {
+        QMetaObject::invokeMethod(this, [this]() {
+            onPcapReadFinished(nullptr, false, "Failed to read PCAP global header.");
+        }, Qt::QueuedConnection);
+        m_readerRunning = false;
+        return;
+    }
+
     if (network != 1) {
         QMetaObject::invokeMethod(this, [this]() {
             onPcapReadFinished(nullptr, false,
@@ -554,34 +566,38 @@ void ConstructorPage::pcapReaderThread(const QString path)
         return;
     }
 
+    // snapLen of 0 is technically valid but means "no limit" — cap it
+    const quint32 maxFrameSize = (snapLen == 0 || snapLen > 65535) ? 65535 : snapLen;
+
     // ── Pre-scan for total count ──────────────────────────────────────────────
     const qint64 dataStart = f.pos();
     int total = 0;
-    while (!f.atEnd()) {
+    while (!f.atEnd() && f.error() == QFileDevice::NoError) {
         quint32 a, b, inclLen, c;
         read32(a); read32(b); read32(inclLen); read32(c);
         if (f.error() != QFileDevice::NoError) break;
-        f.skip(inclLen);
+        if (inclLen > maxFrameSize) break;          // sanity: corrupt/truncated
+        const qint64 skipped = f.skip(inclLen);
+        if (skipped != static_cast<qint64>(inclLen)) break;  // short skip = truncated
         ++total;
     }
     f.seek(dataStart);
 
     // ── Parse ─────────────────────────────────────────────────────────────────
     int current = 0;
-    while (!f.atEnd()) {
+    while (!f.atEnd() && f.error() == QFileDevice::NoError) {
         quint32 tsSec, tsUsec, inclLen, origLen;
         read32(tsSec); read32(tsUsec);
         read32(inclLen); read32(origLen);
         if (f.error() != QFileDevice::NoError) break;
+        if (inclLen > maxFrameSize) break;          // sanity: corrupt/truncated
 
         const QByteArray frame = f.read(inclLen);
-        if ((quint32)frame.size() != inclLen) break;
+        if (static_cast<quint32>(frame.size()) != inclLen) break;
 
         packets->append(PcapReader::parseFrame(frame, tsSec, tsUsec));
-
         ++current;
 
-        // Post progress to main thread every 100 packets
         if (current % 100 == 0 || current == total) {
             const int cur = current;
             const int tot = total;

@@ -10,6 +10,8 @@
 #include <cstring>        // std::memset, std::strncpy
 #include <unistd.h>       // close()
 
+#include "generator_values.hpp"
+
 namespace generator {
     struct statisticData {
         uint64_t packetsSent{};
@@ -32,6 +34,11 @@ namespace generator {
         std::condition_variable dataAval{};
     };
 
+    struct messageQueue {
+        std::queue<generatorMessage> queue{};
+        std::mutex mutex{};
+        std::condition_variable dataAval{};
+    };
     enum Status {
         SUCCESS,
         WARNING,

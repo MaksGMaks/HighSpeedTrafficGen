@@ -23,6 +23,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_manager, &NetworkManager::statsReceived, ui->player, &GeneratorPage::onStatsReceived);
 
+    connect(m_manager, &NetworkManager::messageReceived,
+        this, [this](MessageSeverity sev, const QString &text) {
+            switch (sev) {
+            case MessageSeverity::Error:
+                QMessageBox::critical(this, tr("Error"), text);; break;
+            case MessageSeverity::Warning:
+                QMessageBox::warning(this, tr("Warning"), text); break;
+            default:
+                statusBar()->showMessage(text); break;
+            }
+        });
+
     setupMenuBar();
     loadSettings();
 

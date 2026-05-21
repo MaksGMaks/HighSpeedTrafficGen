@@ -55,10 +55,13 @@ private:
     bool                 m_waitingForFile{false};
 
     // ── Stat forwarder ────────────────────────────────────────────────────────────
-    void statLoop();   // add to private
-
+    void statLoop();
     std::thread  m_statThread;
     bool         m_statRunning{false};
+
+    void msgLoop();
+    std::thread m_msgThread;
+    bool        m_msgRunning{false};
 
     // ── Write queue ───────────────────────────────────────────────────────────
     std::queue<std::string> m_writeQueue;
