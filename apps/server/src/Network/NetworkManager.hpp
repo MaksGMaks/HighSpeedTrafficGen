@@ -15,9 +15,6 @@
 class NetworkManager
 {
 public:
-    std::function<void(const std::string &ip)> onClientConnected;
-    std::function<void()>                      onClientDisconnected;
-
     explicit NetworkManager(uint16_t port, uint16_t devID);
     ~NetworkManager();
 

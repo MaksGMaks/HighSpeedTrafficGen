@@ -131,9 +131,6 @@ int NetworkManager::listen()
         m_socket.remote_endpoint().address().to_string();
     std::cout << "[S][NM] Client connected: " << clientIp << "\n";
 
-    if (onClientConnected)
-        onClientConnected(clientIp);
-
     // ── Start worker threads AFTER accept ────────────────────────────────────
     m_writerRunning = true;
     m_writerThread  = std::thread(&NetworkManager::writerLoop, this);
@@ -225,9 +222,6 @@ int NetworkManager::listen()
     m_writeCv.notify_all();
     if (m_writerThread.joinable())
         m_writerThread.join();
-
-    if (onClientDisconnected)
-        onClientDisconnected();
 
     boost::system::error_code closeEc;
     m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, closeEc);
