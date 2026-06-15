@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QWidget>
 #include <QTreeWidgetItem>
+#include <QTimer>
 
 #include "../../../../../build/apps/client/HSET_GeneratorClient_autogen/include/ui_ConstructorPage.h"
 
@@ -16,11 +17,21 @@
 #include <time.h>
 #include <thread>
 #include <atomic>
+#include <future>
+#include <vector>
 
 #include "../../PcapUtils/PacketBuilder.hpp"
 #include "../../PcapUtils/PcapReader.hpp"
 #include "../commonUI.hpp"
 #include "PacketTableModel.hpp"
+
+struct PcapReadResult {
+    QList<QPacket::Packet> packets;
+    bool ok = false;
+    std::string errorMsg;
+    int current = 0;
+    int total   = 0;
+};
 
 namespace Ui {
     class ConstructorPage;
@@ -74,9 +85,15 @@ private:
     QProgressDialog  *m_progressDialog = nullptr;
 
     std::thread  m_readerThread;
-    std::atomic<bool> m_readerRunning{false};
 
-    void pcapReaderThread(const QString path);
+    void pcapReaderThread(const std::string& path);
+    void onPollReaderTimer();
+    std::atomic<bool>         m_readerRunning{false};
+    std::atomic<int>          m_readProgress{0};
+    std::atomic<int>          m_readTotal{0};
+    std::promise<PcapReadResult> m_readerPromise;
+    std::future<PcapReadResult>  m_readerFuture;
+    QTimer*                   m_pollTimer = nullptr;
 
     // Setup helpers
     void setupConnection();

@@ -382,13 +382,13 @@ void ConstructorPage::onCancelBtnClicked() {
 }
 
 void ConstructorPage::onOpenFileBtnClicked() {
-    if (m_readerRunning) return;  // guard against double-click
+    if (m_readerRunning) return;
 
     const QString path = QFileDialog::getOpenFileName(
-        this, "Open PCAP", QString(), "PCAP Files (*.pcap)", nullptr, QFileDialog::DontUseNativeDialog);
+        this, "Open PCAP", QString(), "PCAP Files (*.pcap)",
+        nullptr, QFileDialog::DontUseNativeDialog);
     if (path.isEmpty()) return;
 
-    // Join previous thread if any
     if (m_readerThread.joinable())
         m_readerThread.join();
 
@@ -396,13 +396,86 @@ void ConstructorPage::onOpenFileBtnClicked() {
     ui->addBtn->setEnabled(false);
 
     m_progressDialog = new QProgressDialog("Reading PCAP...", QString(), 0, 100, this);
-    m_progressDialog->setWindowTitle("Opening");
     m_progressDialog->setWindowModality(Qt::WindowModal);
     m_progressDialog->setMinimumDuration(0);
     m_progressDialog->setValue(0);
 
-    m_readerRunning = true;
-    m_readerThread = std::thread(&ConstructorPage::pcapReaderThread, this, path);
+    // скидаємо promise/future
+    m_readerPromise = std::promise<PcapReadResult>{};
+    m_readerFuture  = m_readerPromise.get_future();
+
+    m_readProgress.store(0);
+    m_readTotal.store(0);
+    m_readerRunning.store(true);
+
+    // запускаємо чистий C++ thread — нуль Qt всередині
+    m_readerThread = std::thread([this, path = path.toStdString()]() {
+        pcapReaderThread(path);
+    });
+
+    // polling timer в main thread замість Qt signals з worker
+    m_pollTimer = new QTimer(this);
+    connect(m_pollTimer, &QTimer::timeout, this, &ConstructorPage::onPollReaderTimer);
+    m_pollTimer->start(50);
+}
+
+void ConstructorPage::onPollReaderTimer()
+{
+    // оновлюємо progress
+    const int cur = m_readProgress.load(std::memory_order_relaxed);
+    const int tot = m_readTotal.load(std::memory_order_relaxed);
+    if (tot > 0 && m_progressDialog) {
+        m_progressDialog->setMaximum(tot);
+        m_progressDialog->setValue(cur);
+        m_progressDialog->setLabelText(
+            QString("Reading packets... %1 / %2").arg(cur).arg(tot));
+    }
+
+    // перевіряємо чи future готовий
+    if (m_readerFuture.valid() &&
+        m_readerFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+    {
+        m_pollTimer->stop();
+        m_pollTimer->deleteLater();
+        m_pollTimer = nullptr;
+
+        // безпечно joinимо — thread вже завершився
+        if (m_readerThread.joinable())
+            m_readerThread.join();
+
+        PcapReadResult result = m_readerFuture.get();
+        m_readerRunning.store(false);
+
+        if (m_progressDialog) {
+            m_progressDialog->close();
+            m_progressDialog->deleteLater();
+            m_progressDialog = nullptr;
+        }
+
+        ui->openFileBtn->setEnabled(true);
+        ui->addBtn->setEnabled(true);
+
+        if (!result.ok) {
+            QMessageBox::critical(this, "Error",
+                QString::fromStdString(result.errorMsg));
+            return;
+        }
+
+        m_tableModel->beginResetModel();
+        m_packets.clear();
+        ui->packetDetailTree->clear();
+        m_packets = std::move(result.packets);
+        m_tableModel->endResetModel();
+
+        ui->tableView->setColumnWidth(0, 180);
+        ui->tableView->setColumnWidth(1, 150);
+        ui->tableView->setColumnWidth(2, 150);
+        ui->tableView->setColumnWidth(3, 80);
+        ui->tableView->setColumnWidth(4, 60);
+
+        QMessageBox::information(this, "Done",
+            QString("Loaded %1 packet(s).").arg(m_packets.size()));
+    }
 }
 
 void ConstructorPage::onSaveBtnClicked() {
@@ -502,116 +575,112 @@ void ConstructorPage::onPcapReadFinished(QList<QPacket::Packet> *packets, bool o
         QString("Loaded %1 packet(s).").arg(m_packets.size()));
 }
 
-void ConstructorPage::pcapReaderThread(const QString path)
+void ConstructorPage::pcapReaderThread(const std::string& path)
 {
-    auto *packets = new QList<QPacket::Packet>();
+    PcapReadResult result;
 
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) {
-        QMetaObject::invokeMethod(this, [this]() {
-            onPcapReadFinished(nullptr, false, "Cannot open file.");
-        }, Qt::QueuedConnection);
-        m_readerRunning = false;
+    // відкриваємо через стандартний C++ fstream
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        result.ok = false;
+        result.errorMsg = "Cannot open file: " + path;
+        m_readerPromise.set_value(std::move(result));
         return;
     }
 
-    // ── Global header ─────────────────────────────────────────────────────────
-    quint32 magic = 0;
-    f.read(reinterpret_cast<char*>(&magic), 4);
+    // зчитуємо весь файл в буфер одразу — ефективніше для великих pcap
+    f.seekg(0, std::ios::end);
+    const std::streamsize fileSize = f.tellg();
+    f.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> buf(static_cast<size_t>(fileSize));
+    if (!f.read(reinterpret_cast<char*>(buf.data()), fileSize)) {
+        result.ok = false;
+        result.errorMsg = "Failed to read file.";
+        m_readerPromise.set_value(std::move(result));
+        return;
+    }
+
+    // парсимо глобальний заголовок
+    if (buf.size() < 24) {
+        result.ok = false;
+        result.errorMsg = "File too small to be a valid PCAP.";
+        m_readerPromise.set_value(std::move(result));
+        return;
+    }
+
+    uint32_t magic;
+    std::memcpy(&magic, buf.data(), 4);
 
     bool swapped = false;
     if (magic == 0xD4C3B2A1)      swapped = true;
     else if (magic != 0xA1B2C3D4) {
-        QMetaObject::invokeMethod(this, [this]() {
-            onPcapReadFinished(nullptr, false, "Not a valid PCAP file.");
-        }, Qt::QueuedConnection);
-        m_readerRunning = false;
+        result.ok = false;
+        result.errorMsg = "Not a valid PCAP file (bad magic).";
+        m_readerPromise.set_value(std::move(result));
         return;
     }
 
-    auto read16 = [&](quint16 &v) {
-        f.read(reinterpret_cast<char*>(&v), 2);
-        if (swapped) v = qbswap(v);
+    auto r16 = [&](size_t off) -> uint16_t {
+        uint16_t v; std::memcpy(&v, buf.data() + off, 2);
+        return swapped ? __builtin_bswap16(v) : v;
     };
-    auto read32 = [&](quint32 &v) {
-        f.read(reinterpret_cast<char*>(&v), 4);
-        if (swapped) v = qbswap(v);
-    };
-    auto read32s = [&](qint32 &v) {
-        f.read(reinterpret_cast<char*>(&v), 4);
-        if (swapped) v = qbswap(v);
+    auto r32 = [&](size_t off) -> uint32_t {
+        uint32_t v; std::memcpy(&v, buf.data() + off, 4);
+        return swapped ? __builtin_bswap32(v) : v;
     };
 
-    quint16 verMajor, verMinor;
-    qint32  thisZone;
-    quint32 sigFigs, snapLen, network;
-    read16(verMajor); read16(verMinor);
-    read32s(thisZone);
-    read32(sigFigs); read32(snapLen); read32(network);
-
-    if (f.error() != QFileDevice::NoError) {
-        QMetaObject::invokeMethod(this, [this]() {
-            onPcapReadFinished(nullptr, false, "Failed to read PCAP global header.");
-        }, Qt::QueuedConnection);
-        m_readerRunning = false;
-        return;
-    }
-
+    // network type — підтримуємо тільки Ethernet (1)
+    const uint32_t network = r32(20);
     if (network != 1) {
-        QMetaObject::invokeMethod(this, [this]() {
-            onPcapReadFinished(nullptr, false,
-                "Only Ethernet (linktype 1) is supported.");
-        }, Qt::QueuedConnection);
-        m_readerRunning = false;
+        result.ok = false;
+        result.errorMsg = "Only Ethernet (linktype 1) is supported.";
+        m_readerPromise.set_value(std::move(result));
         return;
     }
 
-    // snapLen of 0 is technically valid but means "no limit" — cap it
-    const quint32 maxFrameSize = (snapLen == 0 || snapLen > 65535) ? 65535 : snapLen;
+    const uint32_t snapLen    = r32(16);
+    const uint32_t maxFrame   = (snapLen == 0 || snapLen > 65535) ? 65535 : snapLen;
 
-    // ── Pre-scan for total count ──────────────────────────────────────────────
-    const qint64 dataStart = f.pos();
-    int total = 0;
-    while (!f.atEnd() && f.error() == QFileDevice::NoError) {
-        quint32 a, b, inclLen, c;
-        read32(a); read32(b); read32(inclLen); read32(c);
-        if (f.error() != QFileDevice::NoError) break;
-        if (inclLen > maxFrameSize) break;          // sanity: corrupt/truncated
-        const qint64 skipped = f.skip(inclLen);
-        if (skipped != static_cast<qint64>(inclLen)) break;  // short skip = truncated
+    // pre-scan для total count
+    size_t pos = 24;
+    int total  = 0;
+    while (pos + 16 <= buf.size()) {
+        const uint32_t inclLen = r32(pos + 8);
+        if (inclLen > maxFrame || pos + 16 + inclLen > buf.size()) break;
+        pos += 16 + inclLen;
         ++total;
     }
-    f.seek(dataStart);
+    m_readTotal.store(total, std::memory_order_relaxed);
 
-    // ── Parse ─────────────────────────────────────────────────────────────────
+    // парсимо пакети
+    pos = 24;
     int current = 0;
-    while (!f.atEnd() && f.error() == QFileDevice::NoError) {
-        quint32 tsSec, tsUsec, inclLen, origLen;
-        read32(tsSec); read32(tsUsec);
-        read32(inclLen); read32(origLen);
-        if (f.error() != QFileDevice::NoError) break;
-        if (inclLen > maxFrameSize) break;          // sanity: corrupt/truncated
+    result.packets.reserve(total);
 
-        const QByteArray frame = f.read(inclLen);
-        if (static_cast<quint32>(frame.size()) != inclLen) break;
+    while (pos + 16 <= buf.size()) {
+        const uint32_t tsSec  = r32(pos);
+        const uint32_t tsUsec = r32(pos + 4);
+        const uint32_t inclLen = r32(pos + 8);
+        pos += 16;
 
-        packets->append(PcapReader::parseFrame(frame, tsSec, tsUsec));
+        if (inclLen > maxFrame || pos + inclLen > buf.size()) break;
+
+        // передаємо frame як QByteArray для сумісності з PcapReader::parseFrame
+        const QByteArray frame(
+            reinterpret_cast<const char*>(buf.data() + pos), inclLen);
+        pos += inclLen;
+
+        result.packets.append(PcapReader::parseFrame(frame, tsSec, tsUsec));
         ++current;
 
-        if (current % 100 == 0 || current == total) {
-            const int cur = current;
-            const int tot = total;
-            QMetaObject::invokeMethod(this, [this, cur, tot]() {
-                onPcapReadProgress(cur, tot);
-            }, Qt::QueuedConnection);
-        }
+        // оновлюємо progress атомарно — main thread читає через QTimer
+        if (current % 100 == 0 || current == total)
+            m_readProgress.store(current, std::memory_order_relaxed);
     }
 
-    // ── Done — post result to main thread ─────────────────────────────────────
-    QMetaObject::invokeMethod(this, [this, packets]() {
-        onPcapReadFinished(packets, true, {});
-    }, Qt::QueuedConnection);
-    m_readerRunning = false;
+    result.ok = true;
+    m_readerPromise.set_value(std::move(result));
 }
 
 void ConstructorPage::enterEditMode(int packetIndex) {
