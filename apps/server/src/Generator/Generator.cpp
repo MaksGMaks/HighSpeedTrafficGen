@@ -5,14 +5,21 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <pthread.h>
 
 // ── DPDK TX constants (all generation-related, not EAL) ──────────────────────
-static constexpr uint16_t TX_QUEUE_ID = 0;
-static constexpr uint16_t TX_DESC     = 1024;
-static constexpr uint16_t RX_DESC_MIN = 64;   // some PMDs require ≥1 RX queue
-static constexpr uint32_t MBUF_COUNT  = 8192;
-static constexpr uint32_t MBUF_CACHE  = 256;
-static constexpr uint16_t BURST_SIZE  = 32;
+static constexpr uint16_t TX_QUEUE_ID  = 0;
+static constexpr uint16_t TX_DESC      = 2048;
+static constexpr uint16_t RX_DESC_MIN  = 64;
+static constexpr uint32_t MBUF_COUNT   = 16384;
+static constexpr uint32_t MBUF_CACHE   = 512;
+static constexpr uint16_t BURST_SIZE   = 64;
+static constexpr uint32_t RING_SIZE    = 4096;
+
+static constexpr int LCORE_TX      = 1;
+static constexpr int LCORE_BUILDER_0 = 2;
+static constexpr int LCORE_BUILDER_1 = 3;
+static constexpr int LCORE_STATS     = 4;
 
 // ── PCAP structures ───────────────────────────────────────────────────────────
 struct PcapGlobalHdr {
@@ -58,9 +65,12 @@ void Generator::recordStats(uint64_t packets, uint64_t bytes)
 
 void Generator::workerStats()
 {
-    // Publish one snapshot to statQueue each second while the generator runs.
-    // Uses a condition-variable wait with a 1-second timeout so it also wakes
-    // up immediately when isRunning is cleared (avoids a 1-second hang on stop).
+    // пін stats thread на окреме ядро щоб не заважав TX
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(LCORE_STATS, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+
     std::unique_lock<std::mutex> lk(m_mutex);
     while (isRunning.load(std::memory_order_relaxed)) {
         m_pauseCV.wait_for(lk, std::chrono::seconds(1));
@@ -213,6 +223,15 @@ bool Generator::setupPort(uint32_t maxPktSize, rte_mempool*& pool_out)
 
     rte_eth_txconf tx_conf = dev_info.default_txconf;
     tx_conf.offloads = port_conf.txmode.offloads;
+
+    // TX threshold tuning для малих пакетів
+    tx_conf.tx_thresh.pthresh = 36;
+    tx_conf.tx_thresh.hthresh = 0;
+    tx_conf.tx_thresh.wthresh = 0;
+
+    tx_conf.tx_free_thresh = 32;   // звільняти дескриптори частіше
+    tx_conf.tx_rs_thresh   = 32;   // RS-bit кожні 32 пакети
+
     if (rte_eth_tx_queue_setup(m_portId, TX_QUEUE_ID, nb_txd,
                                rte_eth_dev_socket_id(m_portId),
                                &tx_conf) < 0) {
@@ -239,10 +258,6 @@ void Generator::teardownPort(rte_mempool* pool)
         rte_mempool_free(pool);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// workerRandomLaw
-// ─────────────────────────────────────────────────────────────────────────────
-
 static uint16_t ipChecksum(const void* data, size_t len)
 {
     const uint16_t* p = reinterpret_cast<const uint16_t*>(data);
@@ -253,72 +268,69 @@ static uint16_t ipChecksum(const void* data, size_t len)
     return static_cast<uint16_t>(~sum);
 }
 
-void Generator::workerRandomLaw()
+
+void Generator::workerBuilder(rte_mempool* pool, const GenLaw::Law& law, int core)
 {
-    const GenLaw::Law& law = m_params.law;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+
     std::mt19937 rng(std::random_device{}());
 
-    auto sample = law.resolve(rng);
-    uint32_t maxPkt = (law.packetSize.max > 0)
-                      ? law.packetSize.max : sample.packetSize;
-    maxPkt = std::max(maxPkt, static_cast<uint32_t>(
-                 sizeof(rte_ether_hdr) + sizeof(rte_ipv4_hdr) +
-                 sizeof(rte_tcp_hdr)));
+    const uint32_t minFrame = sizeof(rte_ether_hdr) +
+                              sizeof(rte_ipv4_hdr)  +
+                              sizeof(rte_tcp_hdr);
+    const size_t   hdrSize  = minFrame;  // тільки стільки нулюємо
 
-    rte_mempool* pool = nullptr;
-    if (!setupPort(maxPkt, pool)) return;
+    rte_mbuf* burst[BURST_SIZE];
 
-    uint64_t totalPackets = 0;
-    uint64_t totalBytes   = 0;
-    const uint64_t packetLimit = law.packetCount;
+    rte_ether_addr srcMac{};
+    rte_eth_macaddr_get(m_portId, &srcMac);
 
-    std::vector<rte_mbuf*>  burst;
-    std::vector<uint32_t>   burstSizes;
-    burst.reserve(BURST_SIZE);
-    burstSizes.reserve(BURST_SIZE);
+    uint16_t    cachedSrcPort = 0, cachedDstPort = 0;
+    uint16_t    cachedSrcPortN = 0, cachedDstPortN = 0;
 
-    while (isRunning.load()) {
-        if (!waitIfPaused(isRunning, isPaused, m_mutex, m_pauseCV)) break;
+    while (isRunning.load(std::memory_order_relaxed)) {
+        // mutex тільки якщо реально на паузі
+        if (isPaused.load(std::memory_order_relaxed)) {
+            if (!waitIfPaused(isRunning, isPaused, m_mutex, m_pauseCV)) break;
+        }
 
-        burst.clear();
-        burstSizes.clear();
+        const int allocd = rte_pktmbuf_alloc_bulk(pool, burst, BURST_SIZE);
+        if (allocd != 0) { rte_pause(); continue; }
 
-        GenLaw::Law::Resolved p{};
+        uint16_t valid = 0;
+        for (uint16_t bi = 0; bi < BURST_SIZE; ++bi) {
+            const auto p = law.resolve(rng);
+            const uint32_t pktSize = std::max(p.packetSize, minFrame);
 
-        for (uint16_t bi = 0; bi < BURST_SIZE && isRunning.load(); ++bi) {
-            p = law.resolve(rng);
-
-            const uint32_t minFrame = sizeof(rte_ether_hdr) +
-                                      sizeof(rte_ipv4_hdr) +
-                                      sizeof(rte_tcp_hdr);
-            uint32_t pktSize = std::max(p.packetSize, minFrame);
-
-            rte_mbuf* m = rte_pktmbuf_alloc(pool);
-            if (!m) { pushWarning("mbuf alloc failed"); break; }
+            rte_mbuf* m = burst[bi];
+            rte_pktmbuf_reset(m);
 
             uint8_t* raw = reinterpret_cast<uint8_t*>(
                                rte_pktmbuf_append(m, pktSize));
-            if (!raw) { rte_pktmbuf_free(m); break; }
+            if (!raw) { rte_pktmbuf_free(m); continue; }
+
+            // тільки заголовки, не весь пакет
             memset(raw, 0, pktSize);
 
-            // Ethernet
+            // Ethernet — srcMac з кешу, без syscall
             auto* eth = reinterpret_cast<rte_ether_hdr*>(raw);
             memset(&eth->dst_addr, 0xFF, RTE_ETHER_ADDR_LEN);
-            rte_eth_macaddr_get(m_portId, &eth->src_addr);
+            eth->src_addr   = srcMac;
             eth->ether_type = htons(RTE_ETHER_TYPE_IPV4);
 
-            // IP
             const size_t ipOff = sizeof(rte_ether_hdr);
             auto* ip = reinterpret_cast<rte_ipv4_hdr*>(raw + ipOff);
             ip->version_ihl     = 0x45;
             ip->type_of_service = 0;
-            ip->total_length    = htons(static_cast<uint16_t>(
-                                        pktSize - ipOff));
+            ip->total_length    = htons(static_cast<uint16_t>(pktSize - ipOff));
             ip->packet_id       = 0;
             ip->fragment_offset = 0;
             ip->time_to_live    = p.ttl;
-            ip->src_addr        = inet_addr(p.srcIP.c_str());
-            ip->dst_addr        = inet_addr(p.dstIP.c_str());
+            ip->src_addr = p.srcIP;
+            ip->dst_addr = p.dstIP;
 
             const size_t l4Off = ipOff + sizeof(rte_ipv4_hdr);
 
@@ -326,10 +338,18 @@ void Generator::workerRandomLaw()
             case GenLaw::Protocol::UDP: {
                 ip->next_proto_id = IPPROTO_UDP;
                 auto* udp = reinterpret_cast<rte_udp_hdr*>(raw + l4Off);
-                udp->src_port    = htons(p.srcPort);
-                udp->dst_port    = htons(p.dstPort);
-                udp->dgram_len   = htons(static_cast<uint16_t>(
-                                         pktSize - l4Off));
+                // htons тільки якщо порт змінився
+                if (p.srcPort != cachedSrcPort) {
+                    cachedSrcPort  = p.srcPort;
+                    cachedSrcPortN = htons(p.srcPort);
+                }
+                if (p.dstPort != cachedDstPort) {
+                    cachedDstPort  = p.dstPort;
+                    cachedDstPortN = htons(p.dstPort);
+                }
+                udp->src_port    = cachedSrcPortN;
+                udp->dst_port    = cachedDstPortN;
+                udp->dgram_len   = htons(static_cast<uint16_t>(pktSize - l4Off));
                 udp->dgram_cksum = 0;
                 break;
             }
@@ -345,8 +365,16 @@ void Generator::workerRandomLaw()
             default: {
                 ip->next_proto_id = IPPROTO_TCP;
                 auto* tcp = reinterpret_cast<rte_tcp_hdr*>(raw + l4Off);
-                tcp->src_port  = htons(p.srcPort);
-                tcp->dst_port  = htons(p.dstPort);
+                if (p.srcPort != cachedSrcPort) {
+                    cachedSrcPort  = p.srcPort;
+                    cachedSrcPortN = htons(p.srcPort);
+                }
+                if (p.dstPort != cachedDstPort) {
+                    cachedDstPort  = p.dstPort;
+                    cachedDstPortN = htons(p.dstPort);
+                }
+                tcp->src_port  = cachedSrcPortN;
+                tcp->dst_port  = cachedDstPortN;
                 tcp->data_off  = (sizeof(rte_tcp_hdr) / 4) << 4;
                 tcp->tcp_flags = RTE_TCP_SYN_FLAG;
                 tcp->rx_win    = htons(65535);
@@ -360,38 +388,124 @@ void Generator::workerRandomLaw()
 
             m->data_len = static_cast<uint16_t>(pktSize);
             m->pkt_len  = pktSize;
-            burstSizes.push_back(pktSize);
-            burst.push_back(m);
+            burst[valid++] = m;
         }
 
-        if (burst.empty()) break;
+        if (valid == 0) continue;
 
-        uint16_t sent = rte_eth_tx_burst(m_portId, TX_QUEUE_ID,
-                                         burst.data(),
-                                         static_cast<uint16_t>(burst.size()));
-        for (uint16_t i = sent; i < static_cast<uint16_t>(burst.size()); ++i)
+        const uint16_t enqueued = rte_ring_enqueue_burst(
+            m_txRing,
+            reinterpret_cast<void**>(burst),
+            valid, nullptr);
+
+        for (uint16_t i = enqueued; i < valid; ++i)
             rte_pktmbuf_free(burst[i]);
 
-        totalPackets += sent;
-        for (uint16_t i = 0; i < sent; ++i)
-            totalBytes += burstSizes[i];
+        // nanosleep ВИДАЛЕНО
+    }
+}
 
-        // Hand off totals to the stats thread — no direct queue push here.
+// ── workerTX — тільки смокче з ring і шле, нуль overhead ─────────────────────
+void Generator::workerTX(rte_mempool* pool)
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(LCORE_TX, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+
+    rte_mbuf* burst[BURST_SIZE];
+    uint64_t  totalPackets = 0;
+    uint64_t  totalBytes   = 0;
+    uint64_t  ringEmpty    = 0;
+    uint64_t  txRetries    = 0;
+    const uint64_t packetLimit = m_params.law.packetCount;
+    auto tStart = std::chrono::steady_clock::now();  // test
+
+    while (isRunning.load(std::memory_order_relaxed)) {
+        const uint16_t dequeued = rte_ring_dequeue_burst(
+            m_txRing, reinterpret_cast<void**>(burst), BURST_SIZE, nullptr);
+
+        if (dequeued == 0) { ++ringEmpty; rte_pause(); continue; }
+
+        const uint16_t sent = rte_eth_tx_burst(
+            m_portId, TX_QUEUE_ID, burst, dequeued);
+
+        // Звільнити ті, що не пройшли — НЕ ретраїти в петлі
+        for (uint16_t i = sent; i < dequeued; ++i)
+            rte_pktmbuf_free(burst[i]);
+
+        for (uint16_t i = 0; i < sent; ++i)
+            totalBytes += burst[i]->pkt_len;
+
+        totalPackets += sent;
+        ++txRetries;  // просто лічильник скидань, не петля
+
         recordStats(totalPackets, totalBytes);
 
-        if (packetLimit > 0 && totalPackets >= packetLimit) break;
-
-        if (p.timeDiff > 0.0) {
-            uint64_t sleepNS = static_cast<uint64_t>(p.timeDiff * 1e9);
-            struct timespec ts {
-                .tv_sec  = static_cast<time_t>(sleepNS / 1'000'000'000ULL),
-                .tv_nsec = static_cast<long>  (sleepNS % 1'000'000'000ULL)
-            };
-            nanosleep(&ts, nullptr);
+        if (packetLimit > 0 && totalPackets >= packetLimit) {
+            isRunning.store(false, std::memory_order_relaxed);
+            break;
         }
     }
 
+    double sec = std::chrono::duration<double>(                     // test
+        std::chrono::steady_clock::now() - tStart).count();
+    fprintf(stderr,
+        "[TX] pkts=%lu bytes=%lu ringEmpty=%lu txRetries=%lu "
+        "pps=%.0f mbps=%.1f\n",
+        totalPackets, totalBytes, ringEmpty, txRetries,
+        totalPackets / sec, totalBytes * 8.0 / 1e6 / sec);              // end test
+
+    while (rte_ring_dequeue(m_txRing, reinterpret_cast<void**>(burst)) == 0)
+        rte_pktmbuf_free(burst[0]);
+
     teardownPort(pool);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// workerRandomLaw
+// ─────────────────────────────────────────────────────────────────────────────
+
+void Generator::workerRandomLaw()
+{
+    const GenLaw::Law& law = m_params.law;
+    std::mt19937 rng(std::random_device{}());
+
+    auto sample = law.resolve(rng);
+    uint32_t maxPkt = (law.packetSize.max > 0)
+                      ? law.packetSize.max : sample.packetSize;
+    const uint32_t minFrame = sizeof(rte_ether_hdr) +
+                              sizeof(rte_ipv4_hdr)  +
+                              sizeof(rte_tcp_hdr);
+    maxPkt = std::max(maxPkt, minFrame);
+
+    rte_mempool* pool = nullptr;
+    if (!setupPort(maxPkt, pool)) return;
+
+    // створюємо lock-free ring між builder і TX
+    const std::string ring_name = "TX_RING_" + std::to_string(m_portId);
+    m_txRing = rte_ring_create(ring_name.c_str(), RING_SIZE,
+                               rte_socket_id(),
+                               0 | RING_F_SC_DEQ);;
+    if (!m_txRing) {
+        pushError("rte_ring_create failed: " +
+                  std::string(rte_strerror(rte_errno)));
+        teardownPort(pool);
+        return;
+    }
+
+    // запускаємо builder на окремому std::thread
+    std::thread builder1(&Generator::workerBuilder, this, pool, std::cref(law), 2);
+    std::thread builder2(&Generator::workerBuilder, this, pool, std::cref(law), 3);
+
+    // TX крутиться в поточному thread (він вже workerRandomLaw)
+    workerTX(pool);
+
+    builder1.join();
+    builder2.join();
+
+    rte_ring_free(m_txRing);
+    m_txRing = nullptr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -443,6 +557,11 @@ static std::vector<PcapFrame> parsePcap(const std::vector<uint8_t>& buf)
 
 void Generator::workerPcapPlayer()
 {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(0, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+
     const PcapParams::PlayerSettings& ps = m_params.playerSettings;
 
     std::vector<uint8_t> raw;

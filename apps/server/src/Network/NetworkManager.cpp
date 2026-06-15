@@ -2,8 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 
-static std::vector<uint8_t> fromBase64(const std::string &b64)
-{
+static std::vector<uint8_t> fromBase64(const std::string &b64) {
     static constexpr uint8_t kDec[256] = {
         // 0-based decode table; 0xFF = invalid
 #define X 0xFF
@@ -46,13 +45,7 @@ static std::vector<uint8_t> fromBase64(const std::string &b64)
     return out;
 }
 
-// ── Ctor / Dtor ───────────────────────────────────────────────────────────────
-
-NetworkManager::NetworkManager(uint16_t port, uint16_t devID)
-    : m_ioContext()
-    , m_acceptor(m_ioContext)
-    , m_socket(m_ioContext)
-{
+NetworkManager::NetworkManager(uint16_t port, uint16_t devID) : m_ioContext() , m_acceptor(m_ioContext), m_socket(m_ioContext) {
     m_generator = new Generator(devID);
 
     boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::tcp::v4(), port);
@@ -62,8 +55,7 @@ NetworkManager::NetworkManager(uint16_t port, uint16_t devID)
     m_acceptor.listen();
 }
 
-NetworkManager::~NetworkManager()
-{
+NetworkManager::~NetworkManager() {
     m_statRunning = false;
     if (m_statThread.joinable())
         m_statThread.join();
@@ -83,8 +75,6 @@ NetworkManager::~NetworkManager()
     m_acceptor.close(ec);
 }
 
-// ── Public: enqueue a stat frame ──────────────────────────────────────────────
-
 void NetworkManager::pushStats(const nlohmann::json &payload)
 {
     {
@@ -94,8 +84,7 @@ void NetworkManager::pushStats(const nlohmann::json &payload)
     m_writeCv.notify_one();
 }
 
-void NetworkManager::pushStats(const ServerStats &stats)
-{
+void NetworkManager::pushStats(const ServerStats &stats) {
     nlohmann::json arr = nlohmann::json::array();
     arr.push_back({
         { jsonHeaders::Data::Key,         jsonHeaders::Data::Key               },
@@ -109,10 +98,7 @@ void NetworkManager::pushStats(const ServerStats &stats)
     pushStats(arr);
 }
 
-// ── Listen (blocking) ─────────────────────────────────────────────────────────
-
-int NetworkManager::listen()
-{
+int NetworkManager::listen() {
     boost::system::error_code ec;
 
     std::cout << "[S][NM] Waiting for client on port "
@@ -131,7 +117,6 @@ int NetworkManager::listen()
         m_socket.remote_endpoint().address().to_string();
     std::cout << "[S][NM] Client connected: " << clientIp << "\n";
 
-    // ── Start worker threads AFTER accept ────────────────────────────────────
     m_writerRunning = true;
     m_writerThread  = std::thread(&NetworkManager::writerLoop, this);
 
@@ -141,7 +126,6 @@ int NetworkManager::listen()
     m_msgRunning = true;
     m_msgThread  = std::thread(&NetworkManager::msgLoop, this);
 
-    // ── Read loop ─────────────────────────────────────────────────────────────
     std::string            accumulator;
     std::array<char, 4096> buf;
 
@@ -206,7 +190,6 @@ int NetworkManager::listen()
         }
     }
 
-    // ── Tear down all threads ─────────────────────────────────────────────────
     m_statRunning = false;
     if (m_statThread.joinable())
         m_statThread.join();
@@ -229,10 +212,7 @@ int NetworkManager::listen()
     return 0;
 }
 
-// ── Writer thread ─────────────────────────────────────────────────────────────
-
-void NetworkManager::writerLoop()
-{
+void NetworkManager::writerLoop() {
     while (true) {
         std::string frame;
         {
@@ -261,10 +241,7 @@ void NetworkManager::writerLoop()
     }
 }
 
-// ── Command dispatch ──────────────────────────────────────────────────────────
-
-void NetworkManager::handleCommand(const nlohmann::json &obj)
-{
+void NetworkManager::handleCommand(const nlohmann::json &obj) {
     if (!obj.contains(jsonHeaders::Type) ||
         !obj.contains(jsonHeaders::Command)) {
         std::cerr << "[S][NM] Missing TYPE or COMMAND\n";
@@ -288,7 +265,6 @@ void NetworkManager::handleCommand(const nlohmann::json &obj)
         pushStats(ack);
     };
 
-    // FIX: CommandC enum values are Start/Pause/Resume/Finish (capital first letter)
     switch (static_cast<jsonHeaders::CommandC>(cmd)) {
 
     case jsonHeaders::CommandC::Start: {
@@ -297,10 +273,8 @@ void NetworkManager::handleCommand(const nlohmann::json &obj)
 
         if (m_pendingParams.mode == GeneratorMode::PcapPlayer) {
             if (!m_pcapBuffer.empty()) {
-                // File was sent before START (or reusing previous file)
                 m_generator->doStartFromBuffer(m_pendingParams, m_pcapBuffer);
             } else {
-                // File hasn't arrived yet — wait for FILE_DATA
                 m_waitingForFile = true;
                 std::cout << "[S][NM] Waiting for PCAP file data...\n";
             }
@@ -336,15 +310,11 @@ void NetworkManager::handleCommand(const nlohmann::json &obj)
     }
 }
 
-genParams NetworkManager::parseParams(const nlohmann::json &obj) const
-{
+genParams NetworkManager::parseParams(const nlohmann::json &obj) const {
     return obj.at("params").get<genParams>();
 }
 
-// ── Sync write ────────────────────────────────────────────────────────────────
-
-void NetworkManager::syncWrite(const nlohmann::json &payload)
-{
+void NetworkManager::syncWrite(const nlohmann::json &payload) {
     const std::string serialised = payload.dump();
     boost::system::error_code ec;
     boost::asio::write(m_socket, boost::asio::buffer(serialised), ec);
@@ -352,15 +322,13 @@ void NetworkManager::syncWrite(const nlohmann::json &payload)
         std::cerr << "[S][NM] syncWrite error: " << ec.message() << "\n";
 }
 
-void NetworkManager::handleFileData(const nlohmann::json &obj)
-{
-    // Each chunk: {"FILE_DATA": "<base64>", "chunk": N, "total": T [, "eof": true]}
+void NetworkManager::handleFileData(const nlohmann::json &obj) {
+
     const std::string b64   = obj.at(jsonHeaders::File::Key).get<std::string>();
     const int chunkIdx      = obj.value("chunk", 0);
     const int totalChunks   = obj.value("total", 1);
     const bool eof          = obj.value("eof",   false);
 
-    // First chunk — (re)initialise assembly buffer
     if (chunkIdx == 0) {
         m_pcapAssembly.clear();
         m_expectedChunks = totalChunks;
@@ -369,7 +337,6 @@ void NetworkManager::handleFileData(const nlohmann::json &obj)
                   << totalChunks << " chunk(s) expected\n";
     }
 
-    // Decode and decrypt this chunk
     std::vector<uint8_t> decoded  = fromBase64(b64);
     constexpr uint8_t    XOR_KEY  = 0xA5;
     for (uint8_t &byte : decoded) byte ^= XOR_KEY;
@@ -382,9 +349,8 @@ void NetworkManager::handleFileData(const nlohmann::json &obj)
               << "/" << totalChunks
               << " (" << decoded.size() << " bytes)\n";
 
-    if (!eof) return;   // wait for more chunks
+    if (!eof) return;
 
-    // Transfer complete
     m_pcapBuffer = std::move(m_pcapAssembly);
     m_pcapAssembly.clear();
     std::cout << "[S][NM] PCAP transfer complete: "
@@ -396,18 +362,11 @@ void NetworkManager::handleFileData(const nlohmann::json &obj)
     }
 }
 
-void NetworkManager::statLoop()
-{
+void NetworkManager::statLoop() {
     generator::statisticQueue* q = m_generator->getQueueP();
     if (!q) return;
 
     while (m_statRunning) {
-        // ── ADAPT THIS BLOCK to your actual statisticQueue API ────────────────
-        // Option A: if statisticQueue has a blocking pop(statisticData&):
-        //   generator::statisticData sd;
-        //   if (!q->pop(sd)) continue;   // returns false on shutdown/timeout
-
-        // Option B: if it wraps a raw std::queue (based on q->queue.push usage):
         generator::statisticData sd;
         {
             // spin-wait with sleep — replace with condvar if queue supports it
@@ -423,9 +382,7 @@ void NetworkManager::statLoop()
             }
             if (!got) continue;
         }
-        // ─────────────────────────────────────────────────────────────────────
 
-        // Convert statisticData → ServerStats
         const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
 
@@ -433,18 +390,16 @@ void NetworkManager::statLoop()
         s.opackets    = sd.packetsSent;
         s.obytes      = sd.bytesSent;
         s.oerrors     = sd.txErrors;
-        s.ipackets    = 0;              // generator doesn't track RX
+        s.ipackets    = 0;
         s.ibytes      = 0;
         s.ierrors     = 0;
         s.timestampMs = nowMs;
 
-        pushStats(s);   // existing method — serializes and enqueues for TX
+        pushStats(s);
     }
 }
 
-// ── msgLoop ───────────────────────────────────────────────────────────────────
-void NetworkManager::msgLoop()
-{
+void NetworkManager::msgLoop() {
     generator::messageQueue* q = m_generator->getMSGQueueP();
     if (!q) return;
 
@@ -469,6 +424,6 @@ void NetworkManager::msgLoop()
             { jsonHeaders::Message::Severity, static_cast<int>(gm.severity)     },
             { jsonHeaders::Message::Text,     gm.text                            }
         });
-        pushStats(arr);   // reuses the existing write queue
+        pushStats(arr);
     }
 }

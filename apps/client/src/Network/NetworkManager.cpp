@@ -156,12 +156,7 @@ void NetworkManager::doRead()
             if (len == 0) { doRead(); return; }
 
             m_readAccumulator.append(m_readBuf.data(), len);
-
-            // BUG FIX: original called doRead() unconditionally after parse,
-            // causing a second async_read_some to be posted even when one was
-            // already in flight from the re-entry inside the while loop.
-            // Correct pattern: consume all complete messages, then post
-            // exactly one new doRead() at the end.
+            
             while (!m_readAccumulator.empty()) {
                 const std::size_t start = m_readAccumulator.find_first_not_of(" \t\r\n");
                 if (start == std::string::npos) { m_readAccumulator.clear(); break; }
@@ -210,13 +205,6 @@ void NetworkManager::handleMessage(const nlohmann::json &doc)
     }
 
     const nlohmann::json &obj = doc.at(0);
-
-    // ── Device info (first message after connect) ─────────────────────────
-    // if (obj.contains(jsonHeaders::InterfaceName)) {
-    //     // TODO: parse and expose interface capabilities if the UI needs them.
-    //     emit receiverJSON();
-    //     return;
-    // }
 
     // ── Command ACK ───────────────────────────────────────────────────────
     if (obj.contains(jsonHeaders::Type) && obj.contains(jsonHeaders::Command)) {

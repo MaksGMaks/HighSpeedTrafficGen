@@ -5,7 +5,6 @@
 MainWindow::MainWindow(QWidget *parent)
 : QMainWindow(parent)
 , ui(new Ui::MainWindow)
-// , m_settingsManager((std::filesystem::current_path() / "settings.json").string().c_str())
 {
     std::cout << "[MainWindow::MainWindow] Initializing MainWindow" << std::endl;
     ui->setupUi(this);
@@ -37,15 +36,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupMenuBar();
     loadSettings();
-
-    // m_dpdkInitialized = initialize_dpdk();
-    // setupUtilitiesThread();
-    // setupUi();
-    // setupConnections();
-    // setupSettings();
-    // onRefreshInterfacesActionTriggered();
-    // m_utilitiesThread->start();
-    // m_totalTime = 0;
 }
 
 MainWindow::~MainWindow() {

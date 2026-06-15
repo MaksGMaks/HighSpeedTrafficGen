@@ -28,6 +28,19 @@ enum class Mode         { Static, Range, Random };
 enum class Distribution { Uniform, Normal, Exponential };
 enum class Protocol     { TCP, UDP, ICMP, ARP };
 
+template<typename T>
+struct Param {
+    Mode         mode  = Mode::Static;
+    T            value = {};
+    T            min   = {};
+    T            max   = {};
+    T            step  = {};
+    Distribution dist  = Distribution::Uniform;
+
+    T resolve(std::mt19937 &rng) const;
+    T resolveU32(std::mt19937 &rng) const;
+};
+
 namespace detail {
 
     inline double applyDist(std::mt19937 &rng, double mn, double mx,
@@ -78,21 +91,27 @@ namespace detail {
                std::to_string( n        & 0xFF);
     }
 
+    inline uint32_t resolveIPasU32(const Param<std::string>& param, std::mt19937& rng)
+    {
+        if (param.mode == GenLaw::Mode::Static)
+            return ipToU32(param.value);
+
+        uint32_t lo, hi;
+        if (param.mode == GenLaw::Mode::Random) {
+            lo = ipToU32("1.0.0.0");
+            hi = ipToU32("254.255.255.255");
+        } else {
+            lo = ipToU32(param.min);
+            hi = ipToU32(param.max);
+            if (lo > hi) std::swap(lo, hi);
+        }
+        std::uniform_int_distribution<uint32_t> d(lo, hi);
+        return d(rng);
+    }
+
 } // namespace detail
 
 // ── Generic Param ─────────────────────────────────────────────────────────────
-
-template<typename T>
-struct Param {
-    Mode         mode  = Mode::Static;
-    T            value = {};
-    T            min   = {};
-    T            max   = {};
-    T            step  = {};
-    Distribution dist  = Distribution::Uniform;
-
-    T resolve(std::mt19937 &rng) const;
-};
 
 template<>
 inline uint8_t Param<uint8_t>::resolve(std::mt19937 &rng) const
@@ -193,8 +212,8 @@ struct Law {
     uint64_t           packetCount = 0;
 
     struct Resolved {
-        std::string srcIP;
-        std::string dstIP;
+        uint32_t srcIP;
+        uint32_t dstIP;
         uint16_t    srcPort;
         uint16_t    dstPort;
         uint8_t     ttl;
@@ -206,8 +225,8 @@ struct Law {
     Resolved resolve(std::mt19937 &rng) const
     {
         return Resolved{
-            srcIP.resolve(rng),
-            dstIP.resolve(rng),
+            detail::resolveIPasU32(srcIP, rng),
+            detail::resolveIPasU32(dstIP, rng),
             srcPort.resolve(rng),
             dstPort.resolve(rng),
             ttl.resolve(rng),
